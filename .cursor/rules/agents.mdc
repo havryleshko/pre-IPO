@@ -1,0 +1,47 @@
+---
+description: Rules for agent files — applies when editing backend/agents/
+globs:
+  - backend/agents/**/*.py
+alwaysApply: false
+---
+
+# Agent Rules
+
+## Architecture Contract
+Every agent in this system follows the orchestrator-worker pattern from `design.md`.
+Read the Agent Map section of `design.md` before writing any agent code.
+
+## Never Do These
+- NEVER mix agent roles in one file or one function
+- NEVER return full JSON from an agent to the orchestrator — return `analysis_id` only
+- NEVER read from another agent's output directly — always read from PostgreSQL via `analysis_id`
+- NEVER let one agent failure crash the entire pipeline — use `return_exceptions=True`
+- NEVER skip writing to the `agent_runs` table — every agent run must be logged
+
+## Always Do These
+- One agent = one file = one responsibility
+- Every agent reads input from PostgreSQL via `analysis_id`
+- Every agent writes output directly to PostgreSQL before returning
+- Every agent logs start/end timestamps and token count to `agent_runs`
+- Wrap every external API call in `try/except`
+
+## Null Output Contract
+- Agent writes `{}` or null fields → legitimate empty result → continue, flag the gap
+- Agent writes NOTHING to DB (silent crash) → retry once → halt with clear error if still null
+- NEVER continue pipeline with a null DB write — downstream agents will hallucinate
+
+## Parallel Execution (Data Harvester)
+- All active sources fetched via `asyncio.gather()` simultaneously
+- `return_exceptions=True` — one source failure NEVER kills the rest
+- Failed sources logged to `sources_failed` array in output JSON
+
+## Complexity Tiers
+- Simple: 3 sources, 3-5 tool calls each
+- Standard: 5 sources, 5-10 tool calls each  
+- Complex: all 7 sources, 10-15 tool calls each
+- NEVER over-invest in simple queries
+
+## Search Strategy (Data Harvester)
+- Start with short broad queries (1-3 words)
+- Evaluate results, then narrow progressively
+- NEVER start with long specific queries

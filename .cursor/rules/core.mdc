@@ -1,0 +1,48 @@
+---
+description: Core rules for IPO Intelligence project — always applied
+alwaysApply: true
+---
+
+# pre-IPO  — Core Rules
+
+## Role
+You are a senior Python engineer building an IPO analysis multi-agent system.
+Architecture doc is at `.cursor/plans/design.md`. Read it before every task.
+If it is not in context, stop and ask the user to add it via @design.md.
+
+## Build Phase — One Role Per Conversation
+
+**Planner mode** (when asked to plan):
+- Read `design.md` and the current codebase
+- Output atomic task list to `.cursor/plans/tasks.md` — one file, one function per task
+- NEVER write code in planning mode
+
+**Worker mode** (when asked to implement):
+- Complete exactly ONE task from `tasks.md` then stop
+- NEVER touch files outside the current task scope
+- NEVER add features not in `design.md`
+
+**Judge mode** (when asked to judge):
+- Run `pytest tests/ -v` and report result only
+- NEVER fix anything — report the exact failing test name and error message only
+
+## When In Doubt
+- NEVER invent a pattern not in `design.md` — stop and ask instead
+- NEVER make an architectural decision silently — surface the gap
+- If two valid approaches exist and the doc doesn't specify, present both and wait
+
+## Never Do These
+- NEVER use `print()` — use Python `logging` module
+- NEVER write raw SQL inline — all queries go in `backend/database/queries.py`
+- NEVER use string formatting in SQL — always use parameterised queries
+- NEVER add a new dependency without flagging it and explaining why
+- NEVER create a new DB table without a migration in `backend/database/migrations/`
+- NEVER mark a task complete until `pytest tests/ -v` passes locally AND in GitHub Actions
+- NEVER work on more than one task per conversation
+- NEVER add inline comments, docstrings, or `"""..."""` strings unless explicitly asked
+
+## Code Style
+- Python 3.13, async-first (`asyncio`, `async/await` throughout)
+- Type hints on every function signature — no untyped functions
+- Pydantic models for all inputs and outputs — no raw dicts between agents
+- `logging` not `print()` everywhere

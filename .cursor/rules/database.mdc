@@ -1,0 +1,30 @@
+---
+description: Rules for database files — applies when editing backend/database/
+globs:
+  - backend/database/**/*.py
+  - backend/database/**/*.sql
+alwaysApply: false
+---
+
+# Database Rules
+
+## Schema
+Four tables: `analyses`, `agent_runs`, `checkpoints`, `agent_improvements`.
+Read the Data Schema section of `design.md` before any DB work.
+
+## Never Do These
+- NEVER write raw SQL inline in application code — all queries go in `backend/database/queries.py`
+- NEVER use f-strings or string concatenation in SQL — always parameterised queries
+- NEVER create a new table without a corresponding migration file in `backend/database/migrations/`
+- NEVER skip logging to `agent_runs` — every agent run must have a start and end record
+
+## Always Do These
+- New table → new numbered migration file (`002_`, `003_` etc.)
+- Every agent run logged: `agent_name`, `started_at`, `completed_at`, `token_count`, `tool_calls_count`
+- Checkpoint saved immediately after Lead Orchestrator planning completes
+- `last_completed_agent` updated in `analyses` table after each agent finishes — enables resume on failure
+
+## Resume on Failure
+- Pipeline reads `last_completed_agent` on restart and skips completed agents
+- NEVER restart pipeline from scratch — always resume from checkpoint
+- Partial outputs from completed agents are preserved in DB for debugging

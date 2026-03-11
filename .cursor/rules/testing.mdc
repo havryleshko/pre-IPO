@@ -1,0 +1,35 @@
+---
+description: Rules for test files — applies when editing tests/
+globs:
+  - tests/**/*.py
+alwaysApply: false
+---
+
+# Testing Rules
+
+## TDD Contract
+- Tests are written BEFORE the implementation, not after
+- NEVER mark a task complete until `pytest tests/ -v` passes locally AND in GitHub Actions
+- Mirror `backend/` structure inside `tests/` — one test file per source file
+
+## Never Do These
+- NEVER mock the database in integration tests — use a real test DB
+- NEVER skip the null output contract tests — they cover the most dangerous failure mode
+- NEVER test implementation details — test behaviour and outputs
+
+## Test Categories (from design.md)
+- **True positive:** known IPO with public data → expected output (SpaceX fixture)
+- **True negative:** clean IPO, no red flags → baseline output
+- **Failure mode:** API down, null output, implausible LLM value → correct degraded behaviour
+- **Resume/checkpoint:** pipeline fails mid-run → resumes from correct agent
+- **Ambiguous:** conflicting signals, boundary values, redacted S-1 → correct handling
+
+## Key Tests — Never Delete These
+- `test_null_output_contract.py` — null write → retry once → halt
+- `test_pipeline_resume.py` — failure at agent N → resume from agent N not agent 1
+- `test_scenario_builder_rules.py` — probability weightings always sum to 100
+- `test_judge_agent.py` — export stays locked until IFA confirms all flags
+
+## Fixtures
+- SpaceX S-1 sample data lives in `tests/fixtures/sample_s1.json`
+- Use this fixture for all true positive tests — don't make live API calls in tests
