@@ -10,7 +10,7 @@
 
 **Who feels it:** Independent Financial Advisors (IFAs) and RIAs, investors
 
-**What success looks like:** pre-IPO research system that does most accurate and precise analysis (Positive, Pessimistic, Realistic) and recommendation what ETF/fund to buy
+**What success looks like:** pre-IPO research system that does most accurate and precise analysis (Positive, Pessimistic, Realistic), identifies public funds likely to benefit from pre-IPO exposure, and provides post-IPO positioning guidance
 
 ---
 
@@ -408,10 +408,10 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 
 ### Agent 4: Recommendation Engine (Subagent)
 
-**Single responsibility:** Translate scenarios into one actionable ETF/fund recommendation per scenario.
+**Single responsibility:** Translate scenarios into actionable post-IPO positioning guidance and identify public funds likely to benefit pre-IPO.
 
 **Principle 4 — Tool description:**
-`etf_lookup` — "Look up ETF details by ticker. Always verify ETF is actively trading before including in recommendation. ETFs can be delisted."
+`fund_beneficiary_lookup` — "Look up public fund exposure signals and holdings relationships. Use for identifying listed funds with potential pre-IPO benefit paths."
 
 **Input:** Reads `scenario_output` + `parser_output` from PostgreSQL via `analysis_id`
 
@@ -420,27 +420,35 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 ```json
 {
   "company_name": "string",
+  "pre_ipo_beneficiary_funds": {
+    "candidates": [
+      {
+        "fund_name": "string",
+        "confidence": "high | medium | low",
+        "relation_type": "string",
+        "evidence": ["array"]
+      }
+    ],
+    "methodology": "string"
+  },
   "recommendations": {
     "pessimistic": {
-      "etf_ticker": "string",
-      "etf_name": "string",
-      "etf_verified_active": "boolean",
+      "recommended_positioning": "string",
+      "conviction": "high | medium | low",
       "rationale": "string (one sentence, cites scenario driver)",
       "risk_warning": "string (one sentence)",
       "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
     },
     "realistic": {
-      "etf_ticker": "string",
-      "etf_name": "string",
-      "etf_verified_active": "boolean",
+      "recommended_positioning": "string",
+      "conviction": "high | medium | low",
       "rationale": "string (one sentence, cites scenario driver)",
       "risk_warning": "string (one sentence)",
       "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
     },
     "optimistic": {
-      "etf_ticker": "string",
-      "etf_name": "string",
-      "etf_verified_active": "boolean",
+      "recommended_positioning": "string",
+      "conviction": "high | medium | low",
       "rationale": "string (one sentence, cites scenario driver)",
       "risk_warning": "string (one sentence)",
       "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
@@ -452,7 +460,7 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 ```
 
 **Failure modes:**
-- ETF delisted/unavailable to trade → flag, suggest alternative, re-run
+- Positioning recommendation lacks sufficient evidence → flag and regenerate with stricter evidence constraints
 - Rationale exceeds one sentence → regenerate
 - Paragraph outside 500 words → regenerate with word count constraint, but don't try to have same length every time; instead return whatever length is appropriate
 
@@ -480,8 +488,8 @@ Uses interleaved thinking after each validation check to assess severity and dec
 - [ ] All 3 scenarios present and complete
 - [ ] Probability weightings sum to exactly 100%
 - [ ] Every risk factor has a named source citation
-- [ ] ETF present for each scenario
-- [ ] ETF tickers verified as actively trading
+- [ ] Pre-IPO beneficiary funds section present with evidence
+- [ ] Positioning recommendation present for each scenario
 - [ ] Risk warning in all 3 recommendations
 - [ ] All financial metrics sourced from S-1 or verified news
 - [ ] Plain-English summary free of legal jargon
@@ -642,7 +650,7 @@ Three scenario cards side by side (shadcn Card):
 | Drivers (sourced) | Drivers (sourced) | Drivers (sourced) |
 | Key risks (sourced) | Key risks (sourced) | Key risks (sourced) |
 | 30d / 90d / 1yr | 30d / 90d / 1yr | 30d / 90d / 1yr |
-| ETF: ticker | ETF: ticker | ETF: ticker |
+| Positioning guidance | Positioning guidance | Positioning guidance |
 | Rationale | Rationale | Rationale |
 | ⚠️ Risk warning | ⚠️ Risk warning | ⚠️ Risk warning |
 
@@ -666,7 +674,7 @@ Card, Button, Input, Progress, Badge, Alert, Dialog, Collapsible, Separator, Too
 - Company name + IPO date
 - Three scenario cards with probability weightings
 - Price targets table (30d / 90d / 1yr per scenario)
-- One ETF recommendation per scenario with risk warning
+- One positioning recommendation per scenario with risk warning
 - Data sources footer with retrieval timestamps
 - Timestamp + disclaimer
 
@@ -676,7 +684,7 @@ Card, Button, Input, Progress, Badge, Alert, Dialog, Collapsible, Separator, Too
 - Section 1: Company Overview (plain-English prospectus summary)
 - Section 2: Market Context (FRED macro data, sector performance)
 - Section 3: Scenario Analysis (full detail with weighting rationale + source citations)
-- Section 4: Recommendations (ETF per scenario + risk warnings)
+- Section 4: Recommendations (positioning per scenario + risk warnings)
 - Section 5: Supporting Evidence (key X/Twitter quotes with attribution)
 - Section 6: Data Sources (all active sources with retrieval timestamps)
 - Disclaimer page
@@ -734,7 +742,7 @@ Data persists via Docker volume. Pipeline resumes from `last_completed_agent` on
 3. SpaceX — anchor investor present → optimistic weighting increases
 4. SpaceX — probability weightings sum to 100%
 5. SpaceX — all 3 time horizons present
-6. SpaceX — ETF recommendation present for all 3 scenarios
+6. SpaceX — positioning recommendation present for all 3 scenarios
 7. SpaceX — risk warning in all 3 recommendations
 8. SpaceX — client paragraph between 300-400 words
 9. SpaceX — plain-English summary free of legal jargon
@@ -772,7 +780,7 @@ Data persists via Docker volume. Pipeline resumes from `last_completed_agent` on
 33. IFA confirms all flags → export unlocks
 34. Client paragraph 250 words → regeneration triggered
 35. Client paragraph 450 words → truncation triggered
-36. ETF delisted → flag raised, alternative suggested
+36. Positioning recommendation unsupported by evidence → flag raised, recommendation regenerated
 37. All 7 sources unavailable → system halts, clear error to frontend
 38. Two analyses queued → second waits, first completes, second starts
 
@@ -847,7 +855,7 @@ These govern how you interact with Cursor when building this product. Separate f
 | Pipeline fails mid-run | Resume from last_completed_agent checkpoint |
 | Context window overflow | Lead Orchestrator retrieves plan from checkpoints table |
 | IFA confirms flags | Export unlocks |
-| ETF delisted | Flag → suggest alternative |
+| Unsupported positioning recommendation | Flag → regenerate with stronger evidence |
 | Consistent agent failure | Judge logs improvement to agent_improvements |
 
 ---
@@ -866,7 +874,7 @@ These govern how you interact with Cursor when building this product. Separate f
 - All 6 agents complete without flags
 - Probability weightings sum to 100%
 - All metrics traceable to named primary source
-- ETF recommendation defensible to compliance review
+- Positioning recommendation defensible to compliance review
 - Client paragraph readable by non-financial person
 - Tool calls within complexity tier bounds
 - Eval agent scores ≥ 0.8 across all rubric dimensions

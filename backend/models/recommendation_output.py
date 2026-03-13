@@ -1,12 +1,11 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ScenarioRecommendation(BaseModel):
-    etf_ticker: str
-    etf_name: str
-    etf_verified_active: bool
+    recommended_positioning: str
+    conviction: str
     rationale: str
     risk_warning: str
     client_paragraph: str
@@ -18,8 +17,21 @@ class Recommendations(BaseModel):
     optimistic: ScenarioRecommendation
 
 
+class BeneficiaryFundCandidate(BaseModel):
+    fund_name: str
+    confidence: str
+    relation_type: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class PreIpoBeneficiaryFunds(BaseModel):
+    candidates: list[BeneficiaryFundCandidate] = Field(default_factory=list)
+    methodology: str
+
+
 class RecommendationOutput(BaseModel):
     company_name: str
+    pre_ipo_beneficiary_funds: PreIpoBeneficiaryFunds
     recommendations: Recommendations
     plain_english_summary: str
     generated_at: datetime

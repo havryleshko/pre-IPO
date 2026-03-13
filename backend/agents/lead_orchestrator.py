@@ -1,7 +1,8 @@
 import asyncio
+import importlib
 import logging
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Any, Protocol, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,11 @@ class LeadOrchestratorOutput(BaseModel):
 class SubagentRunner(Protocol):
     async def __call__(self, analysis_id: str) -> str:
         ...
+
+
+class _OrchestratorState(TypedDict):
+    analysis_id: str
+    subagent_failures: list[str]
 
 
 class LeadOrchestrator:
@@ -76,21 +82,45 @@ class LeadOrchestrator:
             agent_name="lead_orchestrator",
             checkpoint_data=plan.model_dump(mode="json"),
         )
-
-        results = await asyncio.gather(
-            self._data_harvester(payload.analysis_id),
-            self._prospectus_parser(payload.analysis_id),
-            self._scenario_builder(payload.analysis_id),
-            self._recommendation_engine(payload.analysis_id),
-            return_exceptions=True,
+        graph = self._build_execution_graph()
+        final_state = await graph.ainvoke(
+            {
+                "analysis_id": payload.analysis_id,
+                "subagent_failures": [],
+            }
         )
-
-        failures = [result for result in results if isinstance(result, Exception)]
+        failures = final_state.get("subagent_failures", [])
         if failures:
-            logger.error("Subagent execution failures for analysis_id=%s", payload.analysis_id)
+            logger.error(
+                "Subagent execution failures for analysis_id=%s: %s",
+                payload.analysis_id,
+                ", ".join(failures),
+            )
             raise RuntimeError("One or more subagents failed")
 
         return LeadOrchestratorOutput(analysis_id=payload.analysis_id)
+
+    def _build_execution_graph(self) -> Any:
+        state_graph_cls, start_node, end_node = _load_langgraph_graph_components()
+        graph_builder = state_graph_cls(_OrchestratorState)
+        graph_builder.add_node("dispatch_subagents", self._dispatch_subagents)
+        graph_builder.add_edge(start_node, "dispatch_subagents")
+        graph_builder.add_edge("dispatch_subagents", end_node)
+        return graph_builder.compile()
+
+    async def _dispatch_subagents(self, state: _OrchestratorState) -> _OrchestratorState:
+        results = await asyncio.gather(
+            self._data_harvester(state["analysis_id"]),
+            self._prospectus_parser(state["analysis_id"]),
+            self._scenario_builder(state["analysis_id"]),
+            self._recommendation_engine(state["analysis_id"]),
+            return_exceptions=True,
+        )
+        failures = [str(result) for result in results if isinstance(result, Exception)]
+        return {
+            "analysis_id": state["analysis_id"],
+            "subagent_failures": failures,
+        }
 
     def _build_subagent_tasks(
         self,
@@ -101,5 +131,13 @@ class LeadOrchestrator:
             f"Harvest IPO data for {company_name} at {complexity_tier} complexity.",
             f"Parse S-1 and extract structured facts for {company_name}.",
             f"Build pessimistic, realistic, and optimistic scenarios for {company_name}.",
-            f"Generate ETF recommendations for each scenario for {company_name}.",
+            f"Generate post-IPO positioning recommendations for each scenario for {company_name}.",
         ]
+
+
+def _load_langgraph_graph_components() -> tuple[Any, str, str]:
+    module = importlib.import_module("langgraph.graph")
+    state_graph_cls = getattr(module, "StateGraph")
+    start_node = getattr(module, "START")
+    end_node = getattr(module, "END")
+    return state_graph_cls, start_node, end_node

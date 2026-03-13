@@ -21,7 +21,7 @@
 - T012 Create `backend/services/analysis_status_service.py` update `status` and `last_completed_agent` transitions.
 - T013 Create `backend/services/agent_run_logger.py` start/end/error logging to `agent_runs`.
 - T014 Create `backend/agents/complexity_classifier.py` complexity tier classifier (simple/standard/complex).
-- T015 Create `backend/agents/lead_orchestrator.py` planning + parallel subagent dispatch skeleton.
+- T015 Create `backend/agents/lead_orchestrator.py` planning + parallel subagent dispatch skeleton. (using langgraph)
 - T016 Create `backend/agents/data_harvester.py` parallel source fetch orchestration with `asyncio.gather` and failure capture.
 - T017 Create `backend/tools/sec_edgar_client.py` SEC search + filing fetch helper.
 - T018 Create `backend/tools/rss_client.py` RSS fetch + 30-day filter helper.
@@ -32,15 +32,15 @@
 - T023 Create `backend/tools/twitter_client.py` verified-account-only query helper.
 - T024 Create `backend/agents/prospectus_parser.py` parser pipeline reading `harvester_output` and writing `parser_output`.
 - T025 Create `backend/agents/scenario_builder.py` rules engine + bounded LLM adjustment + sum-to-100 enforcement.
-- T026 Create `backend/agents/recommendation_engine.py` scenario-to-ETF recommendation generator.
+- T026 Create `backend/agents/recommendation_engine.py` dual-goal recommendation generator (pre-IPO beneficiary funds + post-IPO positioning).
 - T027 Create `backend/agents/judge_agent.py` validation checklist + retry-once logic + flags.
 - T028 Create `backend/services/retry_service.py` null-output contract implementation for per-agent retry.
-- T029 Create `backend/services/resume_service.py` resume-from-`last_completed_agent` workflow.
+- T029 Create `backend/services/resume_service.py` resume-from-`last_completed_agent` workflow. (using langgraph)
 - T030 Create `backend/api/schemas.py` FastAPI request/response models (`company_name` input and analysis outputs).
-- T031 Create `backend/api/routes_analysis.py` endpoints for create analysis, fetch analysis, confirm flags.
+- T031 Create `backend/api/routes_analysis.py` endpoints for create analysis, fetch analysis, confirm flags. (using langgraph)
 - T032 Create `backend/api/routes_export.py` endpoints for summary/full PDF export and lock checks.
-- T033 Create `backend/api/websocket_progress.py` WebSocket broadcaster for per-agent status/tool-call updates.
-- T034 Create `backend/main.py` FastAPI app wiring routes, startup hooks, and websocket registration.
+- T033 Create `backend/api/websocket_progress.py` WebSocket broadcaster for per-agent status/tool-call updates. (using langgraph)
+- T034 Create `backend/main.py` FastAPI app wiring routes, startup hooks, and websocket registration. (using langgraph)
 - T035 Create `backend/export/pdf_summary.py` one-page export generator.
 - T036 Create `backend/export/pdf_full_report.py` multi-page export generator.
 - T037 Create `frontend/src/api/client.ts` API/WebSocket client methods for analyses and progress updates.
@@ -54,18 +54,18 @@
 - T045 Create `tests/agents/test_data_harvester_parallel.py` parallel execution + partial-failure continuation tests.
 - T046 Create `tests/agents/test_prospectus_parser.py` S-1 extraction and missing-section flagging tests.
 - T047 Create `tests/agents/test_scenario_builder_rules.py` rule triggers, LLM adjustment cap, and normalization tests.
-- T048 Create `tests/agents/test_recommendation_engine.py` ETF presence, risk warning, paragraph length constraints.
+- T048 Create `tests/agents/test_recommendation_engine.py` positioning presence, risk warning, paragraph length constraints.
 - T049 Create `tests/agents/test_judge_agent.py` validation, retry outcomes, flag/export lock behavior.
-- T050 Create `tests/integration/test_pipeline_resume.py` checkpoint resume from failed agent.
+- T050 Create `tests/integration/test_pipeline_resume.py` checkpoint resume from failed agent. (using langgraph)
 - T051 Create `tests/integration/test_null_output_contract.py` null-write retry-once then fail-fast behavior.
-- T052 Create `tests/integration/test_analysis_end_to_end.py` full pipeline happy-path with 3 scenarios.
+- T052 Create `tests/integration/test_analysis_end_to_end.py` full pipeline happy-path with 3 scenarios. (using langgraph)
 - T053 Create `tests/api/test_analysis_routes.py` analysis API contract tests.
-- T054 Create `tests/api/test_websocket_progress.py` real-time status broadcast tests.
+- T054 Create `tests/api/test_websocket_progress.py` real-time status broadcast tests. (using langgraph)
 - T055 Create `tests/export/test_pdf_generation.py` summary/full export content smoke tests.
 - T056 Create `docker-compose.yml` services for frontend, backend, PostgreSQL with persistent volume.
-- T057 Create `requirements.txt` backend dependency manifest aligned to architecture stack.
+- T057 Create `requirements.txt` backend dependency manifest aligned to architecture stack. (using langgraph)
 - T058 Create `.env.example` required environment variables and safe defaults.
-- T059 Update `.github/workflows/ci.yaml` to include migration/setup steps required by new test suite.
+- T059 Update `.github/workflows/ci.yaml` to include migration/setup steps required by new test suite. (using langgraph)
 - T060 Update `README.md` with local setup, runbook, and testing commands.
 
 ## Execution Notes

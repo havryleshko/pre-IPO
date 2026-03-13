@@ -60,7 +60,7 @@ def _resolve_symbol(yf: Any, company_name: str) -> str:
                 continue
             symbol = str(quote.get("symbol") or "").strip().upper()
             quote_type = str(quote.get("quoteType") or "").upper()
-            if symbol and quote_type in ("EQUITY", "MUTUALFUND", "ETF", ""):
+            if symbol and quote_type in ("EQUITY", "MUTUALFUND", ""):
                 return symbol
     return ""
 
