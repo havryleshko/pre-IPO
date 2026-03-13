@@ -7,7 +7,7 @@ from backend.database.connection import close_pool, get_pool
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="pre_IPO")
+    app = FastAPI(title="pre-IPO")
 
     @app.on_event("startup")
     async def startup_event() -> None:

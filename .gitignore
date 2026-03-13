@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.venv-cursor/
+node_modules/
+.pytest_cache/
+.vscode/
