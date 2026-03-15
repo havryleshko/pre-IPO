@@ -4,6 +4,8 @@ uvicorn[standard]
 langgraph
 pydantic
 pydantic-settings
+yfinance
+httpx
 pytest
 pytest-asyncio
 reportlab

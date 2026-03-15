@@ -32,7 +32,34 @@ jobs:
           python-version: '3.13'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            sleep 2
+          done
+
+      - name: Run migrations
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -f backend/database/migrations/001_create_core_tables.sql
+
+      - name: Verify core tables
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -c "SELECT 1 FROM analyses LIMIT 1;"
+          psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -c "SELECT 1 FROM agent_runs LIMIT 1;"
+          psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -c "SELECT 1 FROM checkpoints LIMIT 1;"
+          psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -c "SELECT 1 FROM agent_improvements LIMIT 1;"
 
       - name: Run tests
         env:

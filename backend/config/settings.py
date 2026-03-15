@@ -5,6 +5,16 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _parse_cors_origins(value: Any) -> list[str]:
+    if value is None:
+        return ["http://localhost:3000"]
+    if isinstance(value, str):
+        return [o.strip() for o in value.split(",") if o.strip()]
+    if isinstance(value, list):
+        return [str(o).strip() for o in value if str(o).strip()]
+    raise TypeError("cors_origins must be a comma-separated string or list")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -28,18 +38,12 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = Field(default=30, ge=1, le=300)
     source_cache_ttl_hours: int = Field(default=24, ge=1, le=168)
 
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: str | list[str] = Field(default="http://localhost:3000")
 
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, value: Any) -> list[str]:
-        if value is None:
-            return ["http://localhost:3000"]
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        if isinstance(value, list):
-            return [str(origin).strip() for origin in value if str(origin).strip()]
-        raise TypeError("cors_origins must be a comma-separated string or list")
+        return _parse_cors_origins(value)
 
 
 @lru_cache(maxsize=1)

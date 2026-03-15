@@ -6,3 +6,7 @@ node_modules/
 frontend/dist/
 .pytest_cache/
 .vscode/
+*.egg-info/
+.env
+.env.*
+!.env.example
