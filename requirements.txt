@@ -1,6 +1,9 @@
 asyncpg
 fastapi
+uvicorn[standard]
+langgraph
 pydantic
 pydantic-settings
 pytest
+pytest-asyncio
 reportlab
