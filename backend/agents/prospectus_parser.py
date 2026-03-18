@@ -13,6 +13,8 @@ from backend.models.parser_output import (
     FloatDetails,
     FundingHistoryItem,
     KeyPerson,
+    FactualClaimEvidence,
+    RiskFactorClaimEvidence,
     ParserOutput,
 )
 from backend.services.agent_run_logger import (
@@ -69,6 +71,8 @@ class ProspectusParser:
         filings = sec_filings if isinstance(sec_filings, list) else []
         filing_texts = [str(item.get("text") or "") for item in filings if isinstance(item, dict)]
         merged_text = " ".join(text for text in filing_texts if text).strip()
+        news_context = self._merge_news_context(harvester_output.get("news_articles"))
+        narrative_text = merged_text or news_context
 
         flagged_sections: list[FlaggedSection] = []
         if not merged_text:
@@ -81,30 +85,34 @@ class ProspectusParser:
             )
 
         financials = self._extract_financials(merged_text, flagged_sections)
-        risk_factors = self._extract_risk_factors(merged_text)
-        use_of_proceeds = self._extract_use_of_proceeds(merged_text, flagged_sections)
-        key_people = self._extract_key_people(merged_text)
+        risk_factors, risk_factors_evidence = self._extract_risk_factors(narrative_text)
+        use_of_proceeds, use_of_proceeds_evidence = self._extract_use_of_proceeds(
+            merged_text, flagged_sections
+        )
+        key_people = self._extract_key_people(narrative_text)
         lockup_period_days = self._extract_lockup_days(merged_text, flagged_sections)
         float_details = self._extract_float_details(merged_text, flagged_sections)
         insider_selling_percentage = self._extract_insider_selling(merged_text)
-        offering_type = self._classify_offering_type(merged_text, insider_selling_percentage)
+        offering_type = self._classify_offering_type(narrative_text, insider_selling_percentage)
 
         yahoo_data = harvester_output.get("yahoo_finance_data")
         comparable_valuations = self._extract_comparable_valuations(yahoo_data)
 
         crunchbase_data = harvester_output.get("crunchbase_data")
         funding_history = self._extract_funding_history(crunchbase_data, flagged_sections)
-        demand_signals = self._extract_demand_signals(merged_text, crunchbase_data, harvester_output)
+        demand_signals = self._extract_demand_signals(narrative_text, crunchbase_data, harvester_output)
 
-        data_confidence = self._derive_confidence(merged_text, financials, flagged_sections)
-        business_model = self._extract_business_model(merged_text)
+        data_confidence = self._derive_confidence(merged_text, news_context, financials, flagged_sections)
+        business_model = self._extract_business_model(narrative_text)
 
         return ParserOutput(
             company_name=company_name or "unknown",
             business_model=business_model,
             financials=financials,
             risk_factors=risk_factors,
+            risk_factors_evidence=risk_factors_evidence,
             use_of_proceeds=use_of_proceeds,
+            use_of_proceeds_evidence=use_of_proceeds_evidence,
             key_people=key_people,
             comparable_valuations=comparable_valuations,
             lockup_period_days=lockup_period_days,
@@ -118,6 +126,159 @@ class ProspectusParser:
             flagged_sections=flagged_sections,
         )
 
+    def _split_filing_into_sections(self, text: str) -> dict[str, str]:
+        if not text:
+            return {}
+
+        anchors: tuple[tuple[str, tuple[str, ...]], ...] = (
+            ("cover_page", ("prospectus", "cover page")),
+            ("prospectus_summary", ("prospectus summary", "summary")),
+            ("risk_factors", ("risk factors",)),
+            ("use_of_proceeds", ("use of proceeds", "use of the net proceeds")),
+            ("business", ("business", "our business")),
+            ("management", ("management", "directors and executive officers")),
+            ("principal_and_selling_stockholders", ("principal and selling stockholders", "selling stockholders")),
+            ("financial_statements", ("financial statements", "selected financial data", "management’s discussion")),
+            ("underwriting", ("underwriting",)),
+        )
+
+        matches: list[tuple[int, str]] = []
+        lowered = text.lower()
+        for section_key, phrases in anchors:
+            for phrase in phrases:
+                idx = lowered.find(phrase)
+                if idx >= 0:
+                    matches.append((idx, section_key))
+                    break
+
+        if not matches:
+            return {"full_text": text}
+
+        matches.sort(key=lambda item: item[0])
+        deduped: list[tuple[int, str]] = []
+        seen_keys: set[str] = set()
+        for idx, key in matches:
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            deduped.append((idx, key))
+
+        sections: dict[str, str] = {}
+        for i, (start, key) in enumerate(deduped):
+            end = deduped[i + 1][0] if i + 1 < len(deduped) else len(text)
+            chunk = text[start:end].strip()
+            if chunk:
+                sections[key] = chunk
+        return sections
+
+    def _locate_cover_page_section(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        sections = self._split_filing_into_sections(text)
+        cover = sections.get("cover_page")
+        if cover:
+            return cover
+
+        lowered = text.lower()
+        prospectus_idx = lowered.find("prospectus")
+        if prospectus_idx >= 0:
+            start = max(prospectus_idx - 4000, 0)
+            end = min(prospectus_idx + 12000, len(text))
+            chunk = text[start:end].strip()
+            return chunk or None
+
+        chunk = text[:12000].strip()
+        return chunk or None
+
+    def _locate_use_of_proceeds_section(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        sections = self._split_filing_into_sections(text)
+        use_of_proceeds = sections.get("use_of_proceeds")
+        if use_of_proceeds:
+            return use_of_proceeds
+
+        lowered = text.lower()
+        idx = lowered.find("use of proceeds")
+        if idx < 0:
+            idx = lowered.find("use of the net proceeds")
+        if idx < 0:
+            idx = lowered.find("we intend to use the net proceeds")
+        if idx < 0:
+            return None
+
+        start = max(idx - 6000, 0)
+        end = min(idx + 18000, len(text))
+        chunk = text[start:end].strip()
+        return chunk or None
+
+    def _locate_risk_factors_section(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        sections = self._split_filing_into_sections(text)
+        risk_factors = sections.get("risk_factors")
+        if risk_factors:
+            return risk_factors
+
+        lowered = text.lower()
+        idx = lowered.find("risk factors")
+        if idx < 0:
+            return None
+
+        start = max(idx - 6000, 0)
+        end = min(idx + 24000, len(text))
+        chunk = text[start:end].strip()
+        return chunk or None
+
+    def _locate_principal_and_selling_stockholders_section(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        sections = self._split_filing_into_sections(text)
+        stockholders = sections.get("principal_and_selling_stockholders")
+        if stockholders:
+            return stockholders
+
+        lowered = text.lower()
+        idx = lowered.find("principal and selling stockholders")
+        if idx < 0:
+            idx = lowered.find("selling stockholders")
+        if idx < 0:
+            return None
+
+        start = max(idx - 6000, 0)
+        end = min(idx + 24000, len(text))
+        chunk = text[start:end].strip()
+        return chunk or None
+
+    def _locate_financial_statements_section(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        sections = self._split_filing_into_sections(text)
+        financials = sections.get("financial_statements")
+        if financials:
+            return financials
+
+        lowered = text.lower()
+        idx = lowered.find("financial statements")
+        if idx < 0:
+            idx = lowered.find("selected financial data")
+        if idx < 0:
+            idx = lowered.find("management’s discussion")
+        if idx < 0:
+            idx = lowered.find("management's discussion")
+        if idx < 0:
+            return None
+
+        start = max(idx - 8000, 0)
+        end = min(idx + 32000, len(text))
+        chunk = text[start:end].strip()
+        return chunk or None
+
     def _extract_business_model(self, text: str) -> str:
         if not text:
             return "Preliminary analysis. S-1 filing not available."
@@ -125,19 +286,180 @@ class ProspectusParser:
         return match or "Business model summary not clearly stated in available filing text."
 
     def _extract_financials(self, text: str, flags: list[FlaggedSection]) -> Financials:
+        financial_statements_candidate = self._locate_financial_statements_section(text)
+        revenue_source_text = financial_statements_candidate or text
+        cash_flow_source_text = financial_statements_candidate or text
+        balance_sheet_source_text = financial_statements_candidate or text
         revenue = self._extract_money_after_keywords(
-            text,
+            revenue_source_text,
             ("revenue", "total revenue", "net revenue"),
+            min_value=1_000,
+            max_value=1e12,
         )
-        burn_rate = self._extract_money_after_keywords(
+        revenue_evidence = None
+        if revenue is not None:
+            revenue_quote = self._find_sentence(
+                revenue_source_text,
+                ("revenue", "total revenue", "net revenue"),
+            )
+            revenue_evidence = FactualClaimEvidence(
+                source="SEC EDGAR",
+                source_reference="SEC EDGAR S-1 — financial statements section",
+                quote=revenue_quote,
+                extracted_at=datetime.now(timezone.utc),
+            )
+        burn_rate: float | None = None
+        for keyword in (
+            "cash used in operating activities",
+            "cash used in operations",
+            "operating cash flow",
+            "burn rate",
+        ):
+            keyword_lc = keyword.lower()
+            idx = cash_flow_source_text.lower().find(keyword_lc)
+            if idx < 0:
+                continue
+
+            start = max(0, idx - 160)
+            end = min(len(cash_flow_source_text), idx + 320)
+            window = cash_flow_source_text[start:end]
+
+            amount = self._extract_money_after_keywords(
+                window,
+                (keyword,),
+                min_value=1_000,
+                max_value=1e11,
+            )
+            if amount is None:
+                continue
+
+            window_lc = window.lower()
+            if any(token in window_lc for token in ("per month", "monthly", "/month")):
+                factor = 1
+            elif any(
+                token in window_lc
+                for token in (
+                    "per year",
+                    "annual",
+                    "per annum",
+                    "for the year",
+                    "twelve months",
+                    "year ended",
+                    "for fiscal year",
+                )
+            ):
+                factor = 12
+            elif "six months" in window_lc:
+                factor = 6
+            elif "nine months" in window_lc:
+                factor = 9
+            elif "three months" in window_lc or "quarter" in window_lc:
+                factor = 3
+            else:
+                # If we cannot reliably infer the reporting period, assume the statement already
+                # provides a monthly cash-use figure.
+                factor = 1
+
+            burn_rate = amount / factor
+            break
+
+        if burn_rate is None:
+            # Fallback to legacy extraction (best-effort).
+            burn_rate = self._extract_money_after_keywords(
+                cash_flow_source_text,
+                (
+                    "burn rate",
+                    "cash used in operating activities",
+                    "cash used in operations",
+                    "operating cash flow",
+                ),
+                min_value=1_000,
+                max_value=1e11,
+            )
+        burn_rate_evidence = None
+        if burn_rate is not None:
+            burn_quote = self._find_sentence(
+                cash_flow_source_text,
+                (
+                    "burn rate",
+                    "cash used in operating activities",
+                    "cash used in operations",
+                    "operating cash flow",
+                ),
+            )
+            burn_rate_evidence = FactualClaimEvidence(
+                source="SEC EDGAR",
+                source_reference="SEC EDGAR S-1 — cash flow / operating activities",
+                quote=burn_quote,
+                extracted_at=datetime.now(timezone.utc),
+            )
+
+        cash_balance = self._extract_money_after_keywords(
+            balance_sheet_source_text,
+            (
+                "cash and cash equivalents",
+                "cash and cash equivalents at",
+                "cash and cash equivalents were",
+                "cash and cash equivalents, net",
+            ),
+            min_value=1_000,
+            max_value=1e12,
+        )
+        cash_balance_quote = None
+        if cash_balance is not None:
+            cash_balance_quote = self._find_sentence(
+                balance_sheet_source_text,
+                ("cash and cash equivalents",),
+            )
+
+        runway_direct = self._extract_number_after_keywords(
             text,
-            ("burn rate", "cash used in operating activities", "cash used in operations", "operating cash flow"),
+            ("cash runway", "runway", "months of cash"),
         )
-        runway = self._extract_number_after_keywords(text, ("cash runway", "runway", "months of cash"))
+        runway_direct_quote = None
+        if runway_direct is not None:
+            runway_direct_quote = self._find_sentence(
+                text,
+                ("cash runway", "months of cash", "runway"),
+            )
+
+        runway: float | None = None
+        runway_evidence = None
+        if cash_balance is not None and burn_rate is not None and burn_rate > 0:
+            runway = cash_balance / burn_rate
+            runway_evidence = FactualClaimEvidence(
+                source="SEC EDGAR",
+                source_reference=(
+                    "SEC EDGAR S-1 — cash and cash equivalents; computed runway from burn_rate_monthly"
+                ),
+                quote=cash_balance_quote,
+                extracted_at=datetime.now(timezone.utc),
+            )
+        else:
+            runway = runway_direct
+            if runway_direct is not None:
+                runway_evidence = FactualClaimEvidence(
+                    source="SEC EDGAR",
+                    source_reference="SEC EDGAR S-1 — cash runway disclosure",
+                    quote=runway_direct_quote,
+                    extracted_at=datetime.now(timezone.utc),
+                )
         growth = self._extract_percentage_after_keywords(
-            text,
+            revenue_source_text,
             ("year-over-year growth", "yoy growth", "revenue growth"),
         )
+        growth_evidence = None
+        if growth is not None:
+            growth_quote = self._find_sentence(
+                revenue_source_text,
+                ("year-over-year growth", "yoy growth", "revenue growth"),
+            )
+            growth_evidence = FactualClaimEvidence(
+                source="SEC EDGAR",
+                source_reference="SEC EDGAR S-1 — financial statements section",
+                quote=growth_quote,
+                extracted_at=datetime.now(timezone.utc),
+            )
 
         if revenue is None:
             flags.append(
@@ -158,27 +480,64 @@ class ProspectusParser:
 
         return Financials(
             revenue=revenue,
+            revenue_evidence=revenue_evidence,
             revenue_growth_yoy=growth,
+            revenue_growth_yoy_evidence=growth_evidence,
             burn_rate_monthly=burn_rate,
+            burn_rate_monthly_evidence=burn_rate_evidence,
             cash_runway_months=runway,
+            cash_runway_months_evidence=runway_evidence,
         )
 
-    def _extract_risk_factors(self, text: str) -> list[str]:
+    def _extract_risk_factors(
+        self, text: str
+    ) -> tuple[list[str], list[RiskFactorClaimEvidence]]:
         if not text:
-            return []
+            return [], []
+
+        risk_section_text = self._locate_risk_factors_section(text) or text
+
+        def _is_noise(s: str) -> bool:
+            if re.search(r"table of contents", s, re.IGNORECASE):
+                return True
+            if re.search(r"^page\s+\d", s, re.IGNORECASE):
+                return True
+            if re.search(r"investing in our .+ involves risks", s, re.IGNORECASE):
+                return True
+            if re.search(r"^[A-Z][A-Z\s&,\.]+$", s):
+                return True
+            return False
+
         candidates: list[str] = []
-        for sentence in re.split(r"(?<=[.!?])\s+", text):
+        evidence: list[RiskFactorClaimEvidence] = []
+        for sentence in re.split(r"(?<=[.!?])\s+", risk_section_text):
             cleaned = sentence.strip()
             lower = cleaned.lower()
-            if len(cleaned) < 30:
+            if len(cleaned) < 60:
                 continue
             if "risk" in lower or "uncertain" in lower or "adverse" in lower:
-                candidates.append(cleaned[:400])
+                if _is_noise(cleaned):
+                    continue
+                if cleaned.count(" ") < 8:
+                    continue
+                candidate = cleaned[:400]
+                candidates.append(candidate)
+                evidence.append(
+                    RiskFactorClaimEvidence(
+                        risk_factor=candidate,
+                        source="SEC EDGAR",
+                        source_reference="SEC EDGAR S-1 — Risk Factors section",
+                        quote=candidate,
+                        extracted_at=datetime.now(timezone.utc),
+                    )
+                )
             if len(candidates) >= 10:
                 break
-        return candidates
+        return candidates, evidence
 
-    def _extract_use_of_proceeds(self, text: str, flags: list[FlaggedSection]) -> str:
+    def _extract_use_of_proceeds(
+        self, text: str, flags: list[FlaggedSection]
+    ) -> tuple[str, FactualClaimEvidence | None]:
         if not text:
             flags.append(
                 FlaggedSection(
@@ -187,10 +546,47 @@ class ProspectusParser:
                     verify_at="SEC EDGAR S-1 use of proceeds section",
                 )
             )
-            return "Preliminary. Use of proceeds unavailable without filing text."
-        sentence = self._find_sentence(text, ("use of proceeds", "we intend to use the net proceeds", "proceeds from this offering"))
+            return ("Preliminary. Use of proceeds unavailable without filing text.", None)
+
+        candidate_text = self._locate_use_of_proceeds_section(text) or text
+        sentence = self._find_sentence(
+            candidate_text,
+            (
+                "use of proceeds",
+                "we intend to use the net proceeds",
+                "proceeds from this offering",
+            ),
+        )
         if sentence:
-            return sentence
+            return (
+                sentence,
+                FactualClaimEvidence(
+                    source="SEC EDGAR",
+                    source_reference="SEC EDGAR S-1 — use of proceeds section",
+                    quote=sentence,
+                    extracted_at=datetime.now(timezone.utc),
+                ),
+            )
+
+        fallback_sentence = self._find_sentence(
+            text,
+            (
+                "use of proceeds",
+                "we intend to use the net proceeds",
+                "proceeds from this offering",
+            ),
+        )
+        if fallback_sentence:
+            return (
+                fallback_sentence,
+                FactualClaimEvidence(
+                    source="SEC EDGAR",
+                    source_reference="SEC EDGAR S-1 — fallback statement from merged filing text",
+                    quote=fallback_sentence,
+                    extracted_at=datetime.now(timezone.utc),
+                ),
+            )
+
         flags.append(
             FlaggedSection(
                 section="Use of Proceeds",
@@ -198,7 +594,7 @@ class ProspectusParser:
                 verify_at="SEC EDGAR S-1 use of proceeds section",
             )
         )
-        return "Use of proceeds statement not clearly identified in available filing text."
+        return ("Use of proceeds statement not clearly identified in available filing text.", None)
 
     def _extract_key_people(self, text: str) -> list[KeyPerson]:
         if not text:
@@ -255,24 +651,70 @@ class ProspectusParser:
                 )
             )
             return 180
-        match = re.search(r"(\d{2,3})\s*day(?:s)?\s+lock[- ]?up", text, flags=re.IGNORECASE)
+
+        sections = self._split_filing_into_sections(text)
+        underwriting_candidate = sections.get("underwriting")
+        if underwriting_candidate:
+            match = re.search(
+                r"(\d{2,3})\s*day(?:s)?\s+lock[- ]?up",
+                underwriting_candidate,
+                flags=re.IGNORECASE,
+            )
+            if match:
+                return int(match.group(1))
+
+        match = re.search(
+            r"(\d{2,3})\s*day(?:s)?\s+lock[- ]?up",
+            text,
+            flags=re.IGNORECASE,
+        )
         if match:
             return int(match.group(1))
         return 180
 
     def _extract_float_details(self, text: str, flags: list[FlaggedSection]) -> FloatDetails:
-        total = self._extract_number_after_keywords(
-            text,
-            ("shares offered", "total shares", "shares to be sold"),
-        )
+        sections = self._split_filing_into_sections(text)
+        cover_candidate = self._locate_cover_page_section(text)
+        underwriting_candidate = sections.get("underwriting")
+
+        candidate_texts: list[str] = []
+        if cover_candidate:
+            candidate_texts.append(cover_candidate)
+        if underwriting_candidate:
+            candidate_texts.append(underwriting_candidate)
+
+        total: float | None = None
+        for candidate in candidate_texts:
+            total = self._extract_number_after_keywords(
+                candidate,
+                ("shares offered", "total shares", "shares to be sold"),
+            )
+            if total is not None:
+                break
+        if total is None:
+            total = self._extract_number_after_keywords(
+                text,
+                ("shares offered", "total shares", "shares to be sold"),
+            )
         insider = self._extract_number_after_keywords(
             text,
             ("shares by existing stockholders", "shares sold by existing", "insider shares"),
         )
-        public_float = self._extract_number_after_keywords(
-            text,
-            ("public float", "shares outstanding available for trading"),
-        )
+        public_float: float | None = None
+        for candidate in (underwriting_candidate, cover_candidate):
+            if not candidate:
+                continue
+            public_float = self._extract_number_after_keywords(
+                candidate,
+                ("public float", "shares outstanding available for trading"),
+            )
+            if public_float is not None:
+                break
+        if public_float is None:
+            public_float = self._extract_number_after_keywords(
+                text,
+                ("public float", "shares outstanding available for trading"),
+            )
         greenshoe = bool(re.search(r"(over[- ]allotment|greenshoe)", text, flags=re.IGNORECASE))
 
         if total is None:
@@ -371,10 +813,26 @@ class ProspectusParser:
         return output
 
     def _extract_insider_selling(self, text: str) -> float | None:
+        if not text:
+            return None
+
+        section_candidate = self._locate_principal_and_selling_stockholders_section(text) or text
+
         match = re.search(
-            r"(?:insider|existing stockholder)[\w\s]{0,40}?(\d{1,3}(?:\.\d+)?)\s*%",
-            text,
+            r"(?:(?:insider|existing stockholder|selling stockholder)s?)[\w\s]{0,250}?"
+            r"(?:will\s+sell|intend\s+to\s+sell|are\s+selling|sell)?\s*"
+            r"(\d{1,3}(?:\.\d+)?)\s*%",
+            section_candidate,
             flags=re.IGNORECASE,
+        )
+        if match:
+            return float(match.group(1))
+
+        match = re.search(
+            r"(?:existing stockholder|selling stockholder|insider).{0,250}?(?:percent|%)[\w\s]{0,20}?"
+            r"(\d{1,3}(?:\.\d+)?)\s*%",
+            section_candidate,
+            flags=re.IGNORECASE | re.DOTALL,
         )
         if not match:
             return None
@@ -390,8 +848,12 @@ class ProspectusParser:
             return "mixed"
         return "primary"
 
-    def _derive_confidence(self, text: str, financials: Financials, flags: list[FlaggedSection]) -> str:
-        if not text:
+    def _derive_confidence(self, filing_text: str, news_text: str, financials: Financials, flags: list[FlaggedSection]) -> str:
+        if not filing_text and not news_text:
+            return "low"
+        if not filing_text and news_text:
+            if financials.revenue is not None or financials.burn_rate_monthly is not None:
+                return "medium"
             return "low"
         missing_core = sum(
             1
@@ -408,7 +870,29 @@ class ProspectusParser:
             return "medium"
         return "high"
 
-    def _extract_money_after_keywords(self, text: str, keywords: tuple[str, ...]) -> float | None:
+    def _merge_news_context(self, news_articles: Any) -> str:
+        if not isinstance(news_articles, list):
+            return ""
+        parts: list[str] = []
+        for article in news_articles[:12]:
+            if not isinstance(article, dict):
+                continue
+            title = str(article.get("title") or "").strip()
+            content = str(article.get("content") or "").strip()
+            block = " ".join(part for part in (title, content) if part)
+            if block:
+                parts.append(block)
+        return " ".join(parts).strip()
+
+    def _extract_money_after_keywords(
+        self,
+        text: str,
+        keywords: tuple[str, ...],
+        *,
+        require_scale: bool = False,
+        min_value: float = 0,
+        max_value: float = 1e12,
+    ) -> float | None:
         for keyword in keywords:
             pattern = rf"{re.escape(keyword)}[\w\s,:\-]{{0,40}}?\$?\s*(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)\s*(million|billion|thousand|m|b|k)?"
             match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -424,6 +908,10 @@ class ProspectusParser:
                 value *= 1_000_000
             elif scale in ("thousand", "k"):
                 value *= 1_000
+            elif require_scale:
+                continue
+            if value < min_value or value > max_value:
+                continue
             return value
         return None
 
