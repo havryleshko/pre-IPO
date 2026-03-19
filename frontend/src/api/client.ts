@@ -1,6 +1,10 @@
 const env = (import.meta as { env?: Record<string, string> }).env;
-const API_BASE = env?.VITE_API_URL ?? "http://localhost:8000";
-const WS_BASE = env?.VITE_WS_URL ?? "ws://localhost:8000";
+const browserHost =
+  typeof window !== "undefined" && window.location?.hostname
+    ? window.location.hostname
+    : "localhost";
+const API_BASE = env?.VITE_API_URL ?? `http://${browserHost}:8000`;
+const WS_BASE = env?.VITE_WS_URL ?? `ws://${browserHost}:8000`;
 
 export type ComplexityTier = "simple" | "standard" | "complex";
 export type AnalysisStatus = "pending" | "running" | "completed" | "failed";
@@ -21,10 +25,10 @@ export interface AnalysisOutputsResponse {
   last_completed_agent: string | null;
   export_locked: boolean;
   created_at: string;
-  harvester_output: unknown;
-  parser_output: unknown;
+  harvester_output: HarvesterOutput | null;
+  parser_output: ParserOutput | null;
   scenario_output: unknown;
-  recommendation_output: unknown;
+  recommendation_output: RecommendationOutput | null;
   judge_output: unknown;
   flags: Array<{ flag_id?: string; section?: string; severity?: string; reason?: string }>;
 }
@@ -67,18 +71,45 @@ export interface ScenarioRecommendation {
   client_paragraph: string;
 }
 
+export interface RetailActionIdeas {
+  conservative: string;
+  tactical: string;
+  risk_control: string;
+}
+
+export interface RetailSummary {
+  verdict_line: string;
+  what_i_see_now: string[];
+  why_that_matters: string[];
+  the_good: string[];
+  the_risk: string[];
+  simple_conclusion: string;
+  key_data_points: string[];
+  action_ideas: RetailActionIdeas;
+  is_preliminary: boolean;
+}
+
 export interface RecommendationOutput {
   company_name: string;
+  decision?: "buy" | "watch" | "avoid" | null;
+  decision_scope?: "pre_ipo_fund" | "post_ipo_direct" | "no_trade" | null;
+  entry_triggers?: string[];
+  watch_triggers?: string[];
+  kill_criteria?: string[];
+  sizing_guidance?: string;
+  decision_rationale?: string;
+  decision_evidence?: string[];
   pre_ipo_beneficiary_funds: PreIpoBeneficiaryFunds;
   recommendations: {
     pessimistic: ScenarioRecommendation;
     realistic: ScenarioRecommendation;
     optimistic: ScenarioRecommendation;
   };
-  plain_english_summary: string;
+  plain_english_summary?: string;
   investment_action?: string;
   funds_to_consider?: string[];
   what_to_watch?: string[];
+  retail_summary?: RetailSummary;
   generated_at?: string;
 }
 
