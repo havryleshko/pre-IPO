@@ -47,6 +47,67 @@ export interface AgentStatusMessage {
   tool_call?: string;
 }
 
+export interface BeneficiaryFundCandidate {
+  fund_name: string;
+  confidence: string;
+  relation_type: string;
+  evidence?: string[];
+}
+
+export interface PreIpoBeneficiaryFunds {
+  candidates: BeneficiaryFundCandidate[];
+  methodology?: string;
+}
+
+export interface ScenarioRecommendation {
+  recommended_positioning: string;
+  conviction: string;
+  rationale: string;
+  risk_warning: string;
+  client_paragraph: string;
+}
+
+export interface RecommendationOutput {
+  company_name: string;
+  pre_ipo_beneficiary_funds: PreIpoBeneficiaryFunds;
+  recommendations: {
+    pessimistic: ScenarioRecommendation;
+    realistic: ScenarioRecommendation;
+    optimistic: ScenarioRecommendation;
+  };
+  plain_english_summary: string;
+  investment_action?: string;
+  funds_to_consider?: string[];
+  what_to_watch?: string[];
+  generated_at?: string;
+}
+
+export interface ParserOutput {
+  financials?: { revenue?: number; revenue_growth_yoy?: number; burn_rate_monthly?: number; cash_runway_months?: number };
+  float_details?: { total_shares_offered?: number; insider_shares?: number; public_float?: number; greenshoe_option?: boolean };
+  demand_signals?: { institutional_interest?: string; roadshow_sentiment?: string; anchor_investors?: string[] };
+  offering_type?: string;
+  lockup_period_days?: number;
+  insider_selling_percentage?: number;
+  data_confidence?: string;
+  flagged_sections?: Array<{ section?: string; reason?: string; verify_at?: string }>;
+}
+
+export interface HarvesterOutput {
+  sources_active?: string[];
+  sources_failed?: Array<{ source?: string; reason?: string }>;
+  harvested_at?: string;
+  twitter_data?: { sentiment_score?: { positive?: number; negative?: number; neutral?: number } };
+}
+
+export interface AnalysisFlag {
+  flag_id?: string;
+  section?: string;
+  severity?: string;
+  reason?: string;
+  source_reference?: string;
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,

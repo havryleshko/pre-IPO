@@ -315,7 +315,7 @@ class ScenarioBuilder:
 
         demand = parser_output.get("demand_signals") if isinstance(parser_output.get("demand_signals"), dict) else {}
         roadshow = str(demand.get("roadshow_sentiment") or "").strip()
-        if roadshow:
+        if roadshow and not roadshow.lower().startswith("no clear roadshow"):
             drivers.append(f"Roadshow: {roadshow[:200]}")
 
         fred = harvester_output.get("fred_data") if isinstance(harvester_output.get("fred_data"), dict) else {}
@@ -323,8 +323,30 @@ class ScenarioBuilder:
         if macro:
             drivers.append(f"Macro: {macro}")
 
+        sec_filings = harvester_output.get("sec_filings") if isinstance(harvester_output.get("sec_filings"), list) else []
+        if sec_filings:
+            drivers.append(f"SEC filings captured: {len(sec_filings)}")
+
+        news_articles = harvester_output.get("news_articles") if isinstance(harvester_output.get("news_articles"), list) else []
+        if news_articles:
+            for article in news_articles[:2]:
+                if not isinstance(article, dict):
+                    continue
+                title = str(article.get("title") or "").strip()
+                source = str(article.get("source") or "news")
+                if title:
+                    drivers.append(f"News ({source}): {title[:180]}")
+
+        funding_history = parser_output.get("funding_history") if isinstance(parser_output.get("funding_history"), list) else []
+        if funding_history:
+            latest_round = funding_history[0] if isinstance(funding_history[0], dict) else {}
+            round_name = str(latest_round.get("round") or "recent round")
+            amount = self._to_float(latest_round.get("amount"))
+            if amount is not None:
+                drivers.append(f"Crunchbase funding: {round_name} {self._fmt_money(amount)}")
+
         if not drivers:
-            drivers.append("No strong directional driver detected in current inputs.")
+            drivers.append("Limited evidence available from SEC, news, and market inputs.")
         return drivers[:6]
 
     def _rationale(
@@ -339,13 +361,25 @@ class ScenarioBuilder:
         rule_names = rules_applied.get(scenario) or []
         rule_block = ", ".join(rule_names) if rule_names else "no direct rules"
         confidence = str(parser_output.get("data_confidence") or "unknown")
-        macro = ""
+        macro = "unknown"
         fred = harvester_output.get("fred_data")
         if isinstance(fred, dict):
             macro = str(fred.get("market_conditions") or "unknown")
+        sec_count = len(harvester_output.get("sec_filings") or []) if isinstance(harvester_output.get("sec_filings"), list) else 0
+        news_count = len(harvester_output.get("news_articles") or []) if isinstance(harvester_output.get("news_articles"), list) else 0
+        funding_rounds = len(parser_output.get("funding_history") or []) if isinstance(parser_output.get("funding_history"), list) else 0
+        demand_signals = parser_output.get("demand_signals") if isinstance(parser_output.get("demand_signals"), dict) else {}
+        institutional_interest = str(demand_signals.get("institutional_interest") or "unknown")
+        sector = ""
+        yahoo = harvester_output.get("yahoo_finance_data") if isinstance(harvester_output.get("yahoo_finance_data"), dict) else {}
+        sector_perf = self._to_float(yahoo.get("sector_90d_performance"))
+        if sector_perf is not None:
+            sector = f", Yahoo sector 90d {round(sector_perf, 2)}"
         return (
-            f"{scenario} probability set at {weights[scenario]}% from rules [{rule_block}], "
-            f"parser confidence {confidence}, macro regime {macro}, qualitative adjustment: {llm_reason}."
+            f"{scenario} probability {weights[scenario]}% from rules [{rule_block}]. "
+            f"Sources: SEC filings {sec_count}, news articles {news_count}, Crunchbase funding rounds {funding_rounds}, "
+            f"FRED macro {macro}{sector}. Parser confidence {confidence}; institutional interest {institutional_interest}; "
+            f"qualitative adjustment {llm_reason}."
         )
 
     def _public_float_percentage(self, public_float: float | None, total_shares: float | None) -> float | None:
@@ -373,3 +407,12 @@ class ScenarioBuilder:
             except ValueError:
                 return None
         return None
+
+    def _fmt_money(self, value: float) -> str:
+        if value >= 1_000_000_000:
+            return f"${round(value / 1_000_000_000, 2)}B"
+        if value >= 1_000_000:
+            return f"${round(value / 1_000_000, 2)}M"
+        if value >= 1_000:
+            return f"${round(value / 1_000, 2)}K"
+        return f"${round(value, 2)}"

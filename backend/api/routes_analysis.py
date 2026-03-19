@@ -1,4 +1,6 @@
+import asyncio
 import importlib
+import logging
 from typing import Any, TypedDict
 
 from fastapi import APIRouter, HTTPException
@@ -14,8 +16,10 @@ from backend.database.queries import (
     get_analysis_by_id,
     set_ifa_confirmed_flags,
 )
+from backend.services.pipeline_runner import run_analysis_pipeline
 
 router = APIRouter(prefix="/analyses", tags=["analysis"])
+logger = logging.getLogger(__name__)
 
 
 class ConfirmFlagsRequest(BaseModel):
@@ -52,6 +56,10 @@ async def create_analysis_endpoint(payload: CreateAnalysisRequest) -> CreateAnal
     record = final_state.get("analysis_record")
     if not record:
         raise HTTPException(status_code=500, detail="Failed to create analysis")
+    try:
+        _schedule_pipeline(str(record["id"]))
+    except Exception:
+        logger.exception("Failed to schedule pipeline for analysis_id=%s", record["id"])
     return CreateAnalysisResponse(
         analysis_id=record["id"],
         company_name=record["company_name"],
@@ -176,3 +184,14 @@ def _load_langgraph_graph_components() -> tuple[Any, str, str]:
     start_node = getattr(module, "START")
     end_node = getattr(module, "END")
     return state_graph_cls, start_node, end_node
+
+
+def _schedule_pipeline(analysis_id: str) -> None:
+    task = asyncio.create_task(run_analysis_pipeline(analysis_id))
+
+    def _on_done(completed_task: asyncio.Task[None]) -> None:
+        exc = completed_task.exception()
+        if exc is not None:
+            logger.exception("Background pipeline failed for analysis_id=%s", analysis_id, exc_info=exc)
+
+    task.add_done_callback(_on_done)

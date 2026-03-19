@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import asyncpg
@@ -20,7 +21,7 @@ async def save_checkpoint(
             """,
             analysis_id,
             agent_name,
-            checkpoint_data,
+            json.dumps(checkpoint_data),
         )
     finally:
         await release_connection(connection)

@@ -28,10 +28,13 @@ def test_create_analysis_returns_analysis_id(client: TestClient) -> None:
         "complexity_tier": "standard",
         "created_at": datetime.now(timezone.utc),
     }
-    with patch(
-        "backend.api.routes_analysis.create_analysis",
-        new_callable=AsyncMock,
-        return_value=record,
+    with (
+        patch(
+            "backend.api.routes_analysis.create_analysis",
+            new_callable=AsyncMock,
+            return_value=record,
+        ),
+        patch("backend.api.routes_analysis._schedule_pipeline") as schedule_pipeline,
     ):
         resp = client.post("/analyses", json={"company_name": "TestCo"})
     assert resp.status_code == 200
@@ -40,16 +43,47 @@ def test_create_analysis_returns_analysis_id(client: TestClient) -> None:
     assert data["analysis_id"] == analysis_id
     assert data["status"] == "pending"
     assert data["complexity_tier"] == "standard"
+    schedule_pipeline.assert_called_once_with(analysis_id)
 
 
 def test_create_analysis_returns_500_when_create_fails(client: TestClient) -> None:
-    with patch(
-        "backend.api.routes_analysis.create_analysis",
-        new_callable=AsyncMock,
-        return_value=None,
+    with (
+        patch(
+            "backend.api.routes_analysis.create_analysis",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.api.routes_analysis._schedule_pipeline") as schedule_pipeline,
     ):
         resp = client.post("/analyses", json={"company_name": "TestCo"})
     assert resp.status_code == 500
+    schedule_pipeline.assert_not_called()
+
+
+def test_create_analysis_returns_200_when_pipeline_schedule_fails(client: TestClient) -> None:
+    analysis_id = str(uuid4())
+    record = {
+        "id": analysis_id,
+        "company_name": "TestCo",
+        "status": "pending",
+        "complexity_tier": "standard",
+        "created_at": datetime.now(timezone.utc),
+    }
+    with (
+        patch(
+            "backend.api.routes_analysis.create_analysis",
+            new_callable=AsyncMock,
+            return_value=record,
+        ),
+        patch(
+            "backend.api.routes_analysis._schedule_pipeline",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        resp = client.post("/analyses", json={"company_name": "TestCo"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["analysis_id"] == analysis_id
 
 
 def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:

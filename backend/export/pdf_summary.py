@@ -131,6 +131,24 @@ async def generate_summary_pdf(record: dict[str, Any]) -> bytes:
     story.append(t)
     story.append(Spacer(1, 0.2 * inch))
 
+    investment_action = rec_data.get("investment_action")
+    if investment_action:
+        story.append(Paragraph("Investment Action", heading_style))
+        story.append(Paragraph(str(investment_action), body_style))
+        story.append(Spacer(1, 0.1 * inch))
+
+    funds_to_consider = rec_data.get("funds_to_consider")
+    if isinstance(funds_to_consider, list) and funds_to_consider:
+        story.append(Paragraph("Funds to Consider", heading_style))
+        story.append(Paragraph(", ".join(str(f) for f in funds_to_consider), body_style))
+        story.append(Spacer(1, 0.1 * inch))
+
+    what_to_watch = rec_data.get("what_to_watch")
+    if isinstance(what_to_watch, list) and what_to_watch:
+        story.append(Paragraph("What to Watch", heading_style))
+        story.append(Paragraph("; ".join(str(w) for w in what_to_watch), body_style))
+        story.append(Spacer(1, 0.1 * inch))
+
     story.append(Paragraph("Data sources", heading_style))
     sources_text = ", ".join(sources_active) if sources_active else "—"
     story.append(Paragraph(f"{sources_text} (retrieved: {sources_ts})", body_style))

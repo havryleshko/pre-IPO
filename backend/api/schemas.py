@@ -3,7 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from backend.models.analysis import AnalysisComplexityTier, AnalysisStatus
 from backend.models.harvester_output import HarvesterOutput
-from backend.models.judge_output import JudgeOutput
+from backend.models.judge_output import JudgeFlag, JudgeOutput
 from backend.models.parser_output import ParserOutput
 from backend.models.recommendation_output import RecommendationOutput
 from backend.models.scenario_output import ScenarioOutput
@@ -34,4 +34,4 @@ class AnalysisOutputsResponse(BaseModel):
     scenario_output: ScenarioOutput | None = None
     recommendation_output: RecommendationOutput | None = None
     judge_output: JudgeOutput | None = None
-    flags: list[dict[str, str]] = Field(default_factory=list)
+    flags: list[JudgeFlag] = Field(default_factory=list)

@@ -4,7 +4,10 @@ import { AgentProgressPanel } from "./components/AgentProgressPanel";
 import { AnalysisInputPanel } from "./components/AnalysisInputPanel";
 import { FlagsPanel, type Flag } from "./components/FlagsPanel";
 import { ReportPanels } from "./components/ReportPanels";
-import { ScenarioCards } from "./components/ScenarioCards";
+import { RecommendationSummaryPanel } from "./components/RecommendationSummaryPanel";
+import { EvidencePanel } from "./components/EvidencePanel";
+
+import { Separator } from "./components/ui/separator";
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -50,12 +53,17 @@ export function App() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="flex w-[30%] min-w-0 flex-col gap-6 border-r border-border p-4">
+      <aside className="flex w-[30%] min-w-0 flex-col gap-6 bg-card p-[24px]">
+        <h1 className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">
+          IPO Intelligence
+        </h1>
         <AnalysisInputPanel onAnalysisCreated={handleAnalysisCreated} />
+        <Separator className="bg-border" />
         <AgentProgressPanel
           analysisId={analysisId}
           lastCompletedAgent={analysis?.last_completed_agent}
         />
+        <Separator className="bg-border" />
         <FlagsPanel
           analysisId={analysisId}
           flags={flags}
@@ -63,16 +71,21 @@ export function App() {
           onConfirm={handleFlagsConfirm}
         />
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col gap-6 p-4">
-        <ScenarioCards
-          scenarioOutput={analysis?.scenario_output ?? null}
+      <main className="flex w-[70%] min-w-0 flex-col gap-6 p-[24px]">
+        <RecommendationSummaryPanel
           recommendationOutput={analysis?.recommendation_output ?? null}
+          parserOutput={analysis?.parser_output ?? null}
+        />
+        <EvidencePanel
+          parserOutput={analysis?.parser_output ?? null}
+          recommendationOutput={analysis?.recommendation_output ?? null}
+          harvesterOutput={analysis?.harvester_output ?? null}
+          flags={flags}
         />
         <ReportPanels
           analysisId={analysisId}
           exportLocked={analysis?.export_locked ?? true}
           recommendationOutput={analysis?.recommendation_output ?? null}
-          harvesterOutput={analysis?.harvester_output ?? null}
         />
         {analysisError && (
           <p className="text-sm text-destructive" role="alert">

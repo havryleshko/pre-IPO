@@ -1,6 +1,6 @@
 # IPO Intelligence — Architecture Document
 **Save to:** `.cursor/plans/architecture.md`
-**Version:** 2.1 — Data sources, schema, ambiguous tests, build phase agents
+**Version:** 2.2 — Retail investor output contract (plain-language, action-first)
 
 ---
 
@@ -11,6 +11,27 @@
 **Who feels it:** Independent Financial Advisors (IFAs) and RIAs, investors
 
 **What success looks like:** pre-IPO research system that does most accurate and precise analysis (Positive, Pessimistic, Realistic), identifies public funds likely to benefit from pre-IPO exposure, and provides post-IPO positioning guidance
+
+### Retail Investor Readability Contract (In Scope)
+
+Investor-facing output must be simple, actionable, and readable without technical background.
+
+Required response shape:
+1. One-sentence verdict (buy/watch/avoid) in plain language
+2. "What I see now" (price, move, timestamp, market cap when available)
+3. "Why that matters" (2-3 short bullets)
+4. "The good" / "The risk" (company-specific, not generic)
+5. "Simple conclusion" (one sentence)
+6. "Key data points used" (5-8 concise numeric bullets)
+7. "Short action ideas" (exactly 3 simple options):
+   - Conservative
+   - Tactical
+   - Risk control (explicit invalidator/stop rule)
+
+If core evidence is missing, system must switch to a low-data fallback:
+- Explicitly label output as preliminary/watch-only
+- Avoid pseudo-precision and avoid buy language
+- State what evidence is missing and what event unlocks a stronger call
 
 ---
 
@@ -408,7 +429,7 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 
 ### Agent 4: Recommendation Engine (Subagent)
 
-**Single responsibility:** Translate scenarios into actionable post-IPO positioning guidance and identify public funds likely to benefit pre-IPO.
+**Single responsibility:** Translate scenarios into simple, retail-readable action guidance and identify public funds likely to benefit pre-IPO.
 
 **Principle 4 — Tool description:**
 `fund_beneficiary_lookup` — "Look up public fund exposure signals and holdings relationships. Use for identifying listed funds with potential pre-IPO benefit paths."
@@ -455,6 +476,21 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
     }
   },
   "plain_english_summary": "string",
+  "retail_summary": {
+    "verdict_line": "string (single sentence, plain language)",
+    "what_i_see_now": ["array of short bullets"],
+    "why_that_matters": ["array of short bullets"],
+    "the_good": ["array of short bullets"],
+    "the_risk": ["array of short bullets"],
+    "simple_conclusion": "string (single sentence)",
+    "key_data_points": ["array of concise numeric bullets"],
+    "action_ideas": {
+      "conservative": "string",
+      "tactical": "string",
+      "risk_control": "string"
+    },
+    "is_preliminary": "boolean"
+  },
   "generated_at": "ISO8601"
 }
 ```
@@ -493,6 +529,9 @@ Uses interleaved thinking after each validation check to assess severity and dec
 - [ ] Risk warning in all 3 recommendations
 - [ ] All financial metrics sourced from S-1 or verified news
 - [ ] Plain-English summary free of legal jargon
+- [ ] Retail summary is simple, concise, and non-technical
+- [ ] Verdict/action consistency: headline, conclusion, and action ideas do not conflict
+- [ ] If data confidence is low, output is clearly marked preliminary/watch-only
 - [ ] Client paragraph up to 500 words
 - [ ] All 3 time horizons present per scenario
 - [ ] Sentiment score present or flagged with reason
@@ -643,7 +682,18 @@ CREATE TABLE agent_improvements (
 - Confirm flags button (unlocks export)
 
 **Right panel (70% width):**
-Three scenario cards side by side (shadcn Card):
+Primary retail summary card first, then scenario details (shadcn Card):
+
+Retail summary card:
+- One-sentence verdict
+- What I see now
+- Why that matters
+- The good / The risk
+- Simple conclusion
+- Key data points used
+- 3 action ideas (Conservative, Tactical, Risk control)
+
+Below retail summary, scenario cards:
 
 | 🔴 Pessimistic X% | 🟡 Realistic X% | 🟢 Optimistic X% |
 |---|---|---|
@@ -876,6 +926,8 @@ These govern how you interact with Cursor when building this product. Separate f
 - All metrics traceable to named primary source
 - Positioning recommendation defensible to compliance review
 - Client paragraph readable by non-financial person
+- Retail summary understandable by non-expert investor at first read
+- Action options are concrete and directly executable
 - Tool calls within complexity tier bounds
 - Eval agent scores ≥ 0.8 across all rubric dimensions
 

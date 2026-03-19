@@ -7,7 +7,6 @@ alwaysApply: true
 
 ## Role
 You are a senior Python engineer building an IPO analysis multi-agent system.
-Architecture doc is at `.cursor/plans/design.md`. Read it before every task.
 If it is not in context, stop and ask the user to add it via @design.md.
 
 ## Build Phase — One Role Per Conversation

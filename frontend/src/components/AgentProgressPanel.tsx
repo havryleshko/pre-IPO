@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { connectProgress, type AgentStatusMessage } from "../api/client";
+import { Circle, Loader2, CheckCircle, XCircle } from "lucide-react";
 
 const AGENT_ORDER = [
   "lead_orchestrator",
@@ -40,7 +41,6 @@ export function AgentProgressPanel({ analysisId, lastCompletedAgent }: AgentProg
       return init;
     }
   );
-  const [activityFeed, setActivityFeed] = useState<Array<{ agent: string; toolCall: string; ts: number }>>([]);
 
   useEffect(() => {
     if (!analysisId) return;
@@ -57,11 +57,6 @@ export function AgentProgressPanel({ analysisId, lastCompletedAgent }: AgentProg
           };
           return next;
         });
-        if (msg.tool_call) {
-          setActivityFeed((prev) =>
-            [...prev, { agent: msg.agent_name, toolCall: msg.tool_call!, ts: Date.now() }].slice(-20)
-          );
-        }
       },
       () => {}
     );
@@ -83,55 +78,47 @@ export function AgentProgressPanel({ analysisId, lastCompletedAgent }: AgentProg
     });
   }, [lastCompletedAgent]);
 
-  function icon(status: AgentStatus) {
+  function renderIcon(status: AgentStatus) {
     switch (status) {
       case "pending":
-        return "○";
+        return <Circle className="h-4 w-4 text-muted-foreground" />;
       case "running":
-        return "…";
+        return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
       case "completed":
-        return "✓";
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
       case "failed":
-        return "✗";
+        return <XCircle className="h-4 w-4 text-destructive" />;
       default:
-        return "○";
+        return <Circle className="h-4 w-4 text-muted-foreground" />;
     }
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-sm font-medium">Agent progress</div>
-      <ul className="flex flex-col gap-1.5">
+      <ul className="flex flex-col gap-3">
         {AGENT_ORDER.map((key) => {
           const { status, toolCall } = agentState[key] ?? { status: "pending" as AgentStatus, toolCall: null };
           const label = AGENT_LABELS[key] ?? key;
           return (
-            <li key={key} className="flex items-center gap-2 text-sm">
-              <span className="shrink-0" aria-hidden>
-                {icon(status)}
-              </span>
-              <span className="min-w-0 truncate">{label}</span>
-              {toolCall && (
-                <span className="truncate text-muted-foreground" title={toolCall}>
+            <li key={key} className="flex flex-col gap-1 text-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0" aria-hidden="true">
+                    {renderIcon(status)}
+                  </span>
+                  <span className="min-w-0 truncate font-medium">{label}</span>
+                </div>
+                <span className="text-xs text-muted-foreground capitalize">{status}</span>
+              </div>
+              {status === "running" && toolCall && (
+                <div className="pl-6 text-[12px] text-[#52525b] truncate" title={toolCall}>
                   {toolCall}
-                </span>
+                </div>
               )}
             </li>
           );
         })}
       </ul>
-      {activityFeed.length > 0 && (
-        <div className="mt-2">
-          <div className="text-xs font-medium text-muted-foreground">Active tool calls</div>
-          <ul className="mt-1 max-h-24 overflow-y-auto text-xs text-muted-foreground">
-            {[...activityFeed].reverse().map((item, i) => (
-              <li key={`${item.ts}-${i}`}>
-                {item.agent}: {item.toolCall}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }

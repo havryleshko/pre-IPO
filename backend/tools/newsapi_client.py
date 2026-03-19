@@ -22,18 +22,28 @@ async def fetch_news_api(
         return []
 
     size = max(1, min(max_articles, _NEWSAPI_MAX_PAGE_SIZE))
-    from_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    requested_from_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+    effective_from_date = requested_from_date
 
-    params = {
-        "q": company_name,
-        "from": from_date.date().isoformat(),
-        "sortBy": "publishedAt",
-        "language": "en",
-        "pageSize": str(size),
-        "page": "1",
-    }
-    query = urlencode(params)
-    payload = await asyncio.to_thread(_get_json, f"{_NEWSAPI_URL}?{query}")
+    for _ in range(3):
+        params = {
+            "q": company_name,
+            "from": effective_from_date.date().isoformat(),
+            "sortBy": "publishedAt",
+            "language": "en",
+            "pageSize": str(size),
+            "page": "1",
+        }
+        query = urlencode(params)
+        try:
+            payload = await asyncio.to_thread(_get_json, f"{_NEWSAPI_URL}?{query}")
+            break
+        except RuntimeError as exc:
+            if "too far in the past" not in str(exc):
+                raise
+            effective_from_date = effective_from_date + timedelta(days=1)
+    else:
+        raise RuntimeError("NewsAPI request failed: requested window exceeds plan retention limit")
 
     status = str(payload.get("status") or "")
     if status != "ok":
@@ -59,7 +69,7 @@ async def fetch_news_api(
         published_at = _parse_datetime(item.get("publishedAt"))
         if not title or not url or published_at is None:
             continue
-        if published_at < from_date:
+        if published_at < effective_from_date:
             continue
 
         result.append(
@@ -92,6 +102,14 @@ def _get_json(url: str) -> dict[str, Any]:
         with urlopen(request, timeout=settings.request_timeout_seconds) as response:
             body = response.read().decode("utf-8")
             return json.loads(body)
+    except HTTPError as exc:
+        try:
+            body = exc.read().decode("utf-8")
+            payload = json.loads(body)
+            message = str(payload.get("message") or exc)
+        except (OSError, json.JSONDecodeError):
+            message = str(exc)
+        raise RuntimeError(f"NewsAPI transport failed: {message}") from exc
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"NewsAPI transport failed: {exc}") from exc
 

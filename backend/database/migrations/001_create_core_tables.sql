@@ -1,4 +1,4 @@
-CREATE TABLE analyses (
+CREATE TABLE IF NOT EXISTS analyses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   custom_name VARCHAR(255),
   company_name VARCHAR(255) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE analyses (
   saved_at TIMESTAMP
 );
 
-CREATE TABLE agent_runs (
+CREATE TABLE IF NOT EXISTS agent_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   analysis_id UUID REFERENCES analyses(id),
   agent_name VARCHAR(100),
@@ -35,7 +35,7 @@ CREATE TABLE agent_runs (
   completed_at TIMESTAMP
 );
 
-CREATE TABLE checkpoints (
+CREATE TABLE IF NOT EXISTS checkpoints (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   analysis_id UUID REFERENCES analyses(id),
   agent_name VARCHAR(100),
@@ -43,7 +43,7 @@ CREATE TABLE checkpoints (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE agent_improvements (
+CREATE TABLE IF NOT EXISTS agent_improvements (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_name VARCHAR(100),
   failure_pattern TEXT,

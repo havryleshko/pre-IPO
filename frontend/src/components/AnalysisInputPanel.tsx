@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { createAnalysis, type ComplexityTier } from "../api/client";
+import { Button } from "./ui/button";
+import { Badge } from "./ui/badge";
 
 export interface AnalysisInputPanelProps {
   onAnalysisCreated?: (data: {
@@ -35,6 +37,19 @@ export function AnalysisInputPanel({ onAnalysisCreated }: AnalysisInputPanelProp
     }
   }
 
+  function getBadgeColor(tier: ComplexityTier) {
+    switch (tier) {
+      case "simple":
+        return "bg-slate-500 hover:bg-slate-600 text-white";
+      case "standard":
+        return "bg-blue-500 hover:bg-blue-600 text-white";
+      case "complex":
+        return "bg-orange-500 hover:bg-orange-600 text-white";
+      default:
+        return "bg-secondary text-secondary-foreground";
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <input
@@ -46,18 +61,19 @@ export function AnalysisInputPanel({ onAnalysisCreated }: AnalysisInputPanelProp
         disabled={loading}
         className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       />
-      <button
-        type="button"
+      <Button
         onClick={handleGenerate}
         disabled={!companyName.trim() || loading}
-        className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+        className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
       >
         {loading ? "Generating…" : "Generate Analysis"}
-      </button>
+      </Button>
       {complexityTier && (
-        <span className="inline-flex w-fit items-center rounded-md border border-transparent bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-          {complexityTier.charAt(0).toUpperCase() + complexityTier.slice(1)}
-        </span>
+        <div className="flex justify-center">
+          <Badge className={getBadgeColor(complexityTier)}>
+            {complexityTier.charAt(0).toUpperCase() + complexityTier.slice(1)}
+          </Badge>
+        </div>
       )}
       {error && (
         <p className="text-sm text-destructive" role="alert">

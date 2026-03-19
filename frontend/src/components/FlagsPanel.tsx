@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { confirmFlags } from "../api/client";
+import { Button } from "./ui/button";
 
 export interface Flag {
   flag_id?: string;
@@ -41,32 +42,32 @@ export function FlagsPanel({ analysisId, flags, exportLocked, onConfirm }: Flags
   return (
     <div className="flex flex-col gap-3">
       <div className="text-sm font-medium">Flags</div>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col gap-4">
         {flags.map((f, i) => (
           <li
             key={f.flag_id ?? i}
-            className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30"
+            className="border-l-4 border-amber-500 pl-3 text-sm"
           >
-            <div className="font-medium">
+            <div className="font-medium text-foreground">
               {f.section ?? "Unknown"} {f.severity ? `(${f.severity})` : ""}
             </div>
-            <div className="mt-1 text-muted-foreground">{f.reason ?? "—"}</div>
+            <div className="mt-1 text-[#a1a1aa]">{f.reason ?? "—"}</div>
             {f.source_reference && (
-              <div className="mt-1 text-xs text-muted-foreground">Verify at: {f.source_reference}</div>
+              <div className="mt-1 text-[12px] text-muted-foreground">Verify at: {f.source_reference}</div>
             )}
           </li>
         ))}
       </ul>
       {exportLocked && (
         <>
-          <button
-            type="button"
+          <Button
+            variant="outline"
             onClick={handleConfirm}
             disabled={loading || !analysisId}
-            className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+            className="w-full border-amber-500 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
           >
             {loading ? "Confirming…" : "Confirm flags"}
-          </button>
+          </Button>
           {error && (
             <p className="text-sm text-destructive" role="alert">
               {error}

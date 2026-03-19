@@ -9,7 +9,6 @@ from backend.agents.complexity_classifier import (
     ComplexityClassifierInput,
     classify_complexity,
 )
-from backend.agents.data_harvester import DataHarvester, DataHarvesterInput
 from backend.agents.judge_agent import JudgeAgent, JudgeAgentInput
 from backend.agents.prospectus_parser import ProspectusParser, ProspectusParserInput
 from backend.agents.recommendation_engine import (
@@ -29,6 +28,7 @@ from backend.services.resume_service import (
     ResumeServiceInput,
     resume_from_last_completed_agent,
 )
+from backend.services import pipeline_runner
 
 SAMPLE_S1 = """
 Total revenue for the year was $1,500 million. Cash used in operating activities was $50 million per month.
@@ -133,30 +133,10 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
             store["export_locked"] = kw.get("export_locked", True)
         return ""
 
-    dh = DataHarvester(
-        sec_edgar=_mock_sec_edgar,
-        rss_feeds=_mock_rss,
-        news_api=_mock_news_api,
-        crunchbase=_mock_crunchbase,
-        yahoo_finance=_mock_yahoo,
-        fred=_mock_fred,
-        twitter=_mock_twitter,
-    )
     pp = ProspectusParser()
     sb = ScenarioBuilder()
     re = RecommendationEngine()
     judge = JudgeAgent()
-
-    async def dh_executor(aid: str) -> None:
-        classifier = classify_complexity(ComplexityClassifierInput(company_name=store["company_name"]))
-        await dh.run(
-            DataHarvesterInput(
-                analysis_id=aid,
-                company_name=store["company_name"],
-                complexity_tier=classifier.complexity_tier,
-                active_sources=classifier.active_sources,
-            )
-        )
 
     async def pp_executor(aid: str) -> None:
         await pp.run(ProspectusParserInput(analysis_id=aid))
@@ -170,13 +150,17 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     async def judge_executor(aid: str) -> None:
         await judge.run(JudgeAgentInput(analysis_id=aid))
 
-    executors = {
-        "data_harvester": dh_executor,
-        "prospectus_parser": pp_executor,
-        "scenario_builder": sb_executor,
-        "recommendation_engine": re_executor,
-        "judge_agent": judge_executor,
-    }
+    async def set_complexity_tier(aid: str, tier: str) -> str:
+        if aid == analysis_id:
+            store["complexity_tier"] = tier
+        return ""
+
+    async def set_active_sources(aid: str, active_sources: list[str]) -> str:
+        if aid == analysis_id:
+            lead_plan = store.get("lead_plan") or {}
+            lead_plan["active_sources"] = list(active_sources)
+            store["lead_plan"] = lead_plan
+        return ""
 
     patches = [
         ("backend.database.queries.get_analysis_by_id", get_analysis),
@@ -187,6 +171,8 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
         ("backend.database.queries.save_judge_output", save_judge),
         ("backend.database.queries.update_analysis_status", update_status),
         ("backend.database.queries.set_flags_and_export_lock", set_flags),
+        ("backend.database.queries.set_analysis_complexity_tier", set_complexity_tier),
+        ("backend.database.queries.set_analysis_active_sources", set_active_sources),
         ("backend.services.resume_service.get_analysis_by_id", get_analysis),
         ("backend.services.retry_service.get_analysis_by_id", get_analysis),
         ("backend.agents.prospectus_parser.get_analysis_by_id", get_analysis),
@@ -203,6 +189,14 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     ]
     log_return = {"id": "1"}
     with ExitStack() as stack:
+        stack.enter_context(patch("backend.api.websocket_progress.emit_agent_status"))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_sec_edgar", new=_mock_sec_edgar))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_rss_feeds", new=_mock_rss))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_news_api", new=_mock_news_api))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_crunchbase", new=_mock_crunchbase))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_yahoo_finance", new=_mock_yahoo))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_fred_data", new=_mock_fred))
+        stack.enter_context(patch("backend.services.pipeline_runner.fetch_twitter", new=_mock_twitter))
         for target, side_effect in patches:
             stack.enter_context(
                 patch(target, new_callable=AsyncMock, side_effect=side_effect)
@@ -214,6 +208,8 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
             stack.enter_context(
                 patch(f"backend.agents.{mod}.log_agent_run_completed", new_callable=AsyncMock)
             )
+
+        executors = pipeline_runner._build_executors()
         result = await resume_from_last_completed_agent(
             ResumeServiceInput(analysis_id=analysis_id),
             executors=executors,
@@ -221,6 +217,8 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
 
     assert result.completed is True
     assert result.analysis_id == analysis_id
+    expected_classifier = classify_complexity(ComplexityClassifierInput(company_name=store["company_name"]))
+    assert store["complexity_tier"] == expected_classifier.complexity_tier
     scenario_output = store.get("scenario_output")
     assert scenario_output is not None
     scenarios = scenario_output.get("scenarios")

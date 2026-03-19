@@ -30,6 +30,24 @@ class PreIpoBeneficiaryFunds(BaseModel):
     methodology: str
 
 
+class RetailActionIdeas(BaseModel):
+    conservative: str = ""
+    tactical: str = ""
+    risk_control: str = ""
+
+
+class RetailSummary(BaseModel):
+    verdict_line: str = ""
+    what_i_see_now: list[str] = Field(default_factory=list)
+    why_that_matters: list[str] = Field(default_factory=list)
+    the_good: list[str] = Field(default_factory=list)
+    the_risk: list[str] = Field(default_factory=list)
+    simple_conclusion: str = ""
+    key_data_points: list[str] = Field(default_factory=list)
+    action_ideas: RetailActionIdeas = Field(default_factory=RetailActionIdeas)
+    is_preliminary: bool = False
+
+
 class RecommendationOutput(BaseModel):
     company_name: str
     decision: Literal["buy", "watch", "avoid"] | None = None
@@ -46,4 +64,5 @@ class RecommendationOutput(BaseModel):
     investment_action: str = ""
     funds_to_consider: list[str] = Field(default_factory=list)
     what_to_watch: list[str] = Field(default_factory=list)
+    retail_summary: RetailSummary = Field(default_factory=RetailSummary)
     generated_at: datetime
