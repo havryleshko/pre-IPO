@@ -37,6 +37,7 @@ export function RecommendationSummaryPanel({
   const decisionRationale = recommendationOutput.decision_rationale ?? "";
   const whyNow = decisionRationale || recommendationOutput.plain_english_summary || summary;
   const retailSummary = recommendationOutput.retail_summary;
+  const showDetailedView = !retailSummary;
 
   const vehicle =
     decisionScope === "pre_ipo_fund"
@@ -67,9 +68,11 @@ export function RecommendationSummaryPanel({
               Primary Recommendation
             </div>
             <CardTitle className="text-2xl font-semibold text-foreground">
-              {realistic.recommended_positioning}
+              {retailSummary?.verdict_line ?? realistic.recommended_positioning}
             </CardTitle>
-            <p className="text-[13px] text-muted-foreground">{realistic.rationale}</p>
+            <p className="text-[13px] text-muted-foreground">
+              {retailSummary?.simple_conclusion ?? realistic.rationale}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <Badge variant="outline" className={getConvictionColor(conviction)}>
@@ -96,6 +99,12 @@ export function RecommendationSummaryPanel({
           <div className="rounded-lg border border-border bg-card p-4">
             <h3 className="text-[14px] font-medium text-foreground mb-2">Simple Investor View</h3>
             <p className="text-[14px] leading-relaxed text-foreground">{retailSummary.verdict_line}</p>
+            {decision && decisionScope && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge variant="outline">{decision.toUpperCase()}</Badge>
+                <Badge variant="secondary">{decisionScope.replace(/_/g, " ")}</Badge>
+              </div>
+            )}
 
             {retailSummary.what_i_see_now.length > 0 && (
               <div className="mt-4">
@@ -164,7 +173,7 @@ export function RecommendationSummaryPanel({
             </div>
           </div>
         )}
-        {decision && decisionScope ? (
+        {showDetailedView && decision && decisionScope ? (
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -210,14 +219,14 @@ export function RecommendationSummaryPanel({
               )}
             </div>
           </div>
-        ) : (
+        ) : showDetailedView ? (
           <div>
             <h3 className="text-[14px] font-medium text-foreground mb-2">Summary</h3>
             <p className="text-[14px] leading-relaxed text-muted-foreground">{summary}</p>
           </div>
-        )}
+        ) : null}
 
-        {recommendationOutput.investment_action && (
+        {showDetailedView && recommendationOutput.investment_action && (
           <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
             <div className="flex items-start gap-3">
               <Target className="h-5 w-5 text-primary shrink-0 mt-0.5" />
@@ -231,7 +240,7 @@ export function RecommendationSummaryPanel({
           </div>
         )}
 
-        {recommendationOutput.funds_to_consider && recommendationOutput.funds_to_consider.length > 0 && (
+        {showDetailedView && recommendationOutput.funds_to_consider && recommendationOutput.funds_to_consider.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-start gap-3">
               <TrendingUp className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
@@ -247,7 +256,7 @@ export function RecommendationSummaryPanel({
           </div>
         )}
 
-        {recommendationOutput.what_to_watch && recommendationOutput.what_to_watch.length > 0 && (
+        {showDetailedView && recommendationOutput.what_to_watch && recommendationOutput.what_to_watch.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-4">
             <div className="flex items-start gap-3">
               <Eye className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
@@ -263,7 +272,7 @@ export function RecommendationSummaryPanel({
           </div>
         )}
 
-        {realistic.risk_warning && (
+        {showDetailedView && realistic.risk_warning && (
           <div className="flex items-start gap-3 rounded-lg border border-destructive/20 bg-destructive/10 p-4">
             <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div className="flex flex-col gap-1">

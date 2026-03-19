@@ -104,14 +104,63 @@ async def generate_full_report_pdf(record: dict[str, Any]) -> bytes:
 
     story.append(Spacer(1, 2 * inch))
     story.append(Paragraph(_escape(company_name), title_style))
-    story.append(Paragraph(f"IPO Analysis Report", cover_sub_style))
-    story.append(Paragraph(f"Analysis date: {analysis_date}", cover_sub_style))
+    story.append(Paragraph(_escape("IPO Analysis Report"), cover_sub_style))
+    story.append(Paragraph(_escape(f"Analysis date: {analysis_date}"), cover_sub_style))
     story.append(Spacer(1, 0.5 * inch))
     story.append(Paragraph(_escape(DISCLAIMER), ParagraphStyle("Disclaimer", parent=body_style, fontSize=9, alignment=1, textColor=colors.grey)))
     story.append(PageBreak())
 
     story.append(Paragraph("Executive Summary", section_style))
-    story.append(Paragraph(_escape(plain_summary) if plain_summary else "—", body_style))
+    retail_summary = rec_data.get("retail_summary")
+    if isinstance(retail_summary, dict):
+        def _render_list(title: str, items: list[Any]) -> None:
+            if not items:
+                return
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(Paragraph(title, heading_style))
+            bullets = "<br/>".join(_escape(f"- {str(item)}") for item in items[:12] if item is not None)
+            if bullets:
+                story.append(Paragraph(bullets, body_style))
+
+        story.append(Paragraph("Simple Investor View", heading_style))
+        verdict_line = retail_summary.get("verdict_line") or "—"
+        story.append(Paragraph(_escape(str(verdict_line)), body_style))
+
+        what_i_see_now = retail_summary.get("what_i_see_now") or []
+        why_that_matters = retail_summary.get("why_that_matters") or []
+        the_good = retail_summary.get("the_good") or []
+        the_risk = retail_summary.get("the_risk") or []
+        key_data_points = retail_summary.get("key_data_points") or []
+
+        _render_list("What I See Now", what_i_see_now if isinstance(what_i_see_now, list) else [])
+        _render_list("Why That Matters", why_that_matters if isinstance(why_that_matters, list) else [])
+        _render_list("The Good", the_good if isinstance(the_good, list) else [])
+        _render_list("The Risk", the_risk if isinstance(the_risk, list) else [])
+
+        sc = retail_summary.get("simple_conclusion") or ""
+        if str(sc).strip():
+            story.append(Spacer(1, 0.1 * inch))
+            story.append(Paragraph("Simple Conclusion", heading_style))
+            story.append(Paragraph(_escape(str(sc)), body_style))
+
+        _render_list("Key Data Points Used", key_data_points if isinstance(key_data_points, list) else [])
+
+        action_ideas = retail_summary.get("action_ideas") or {}
+        conservative = action_ideas.get("conservative") if isinstance(action_ideas, dict) else None
+        tactical = action_ideas.get("tactical") if isinstance(action_ideas, dict) else None
+        risk_control = action_ideas.get("risk_control") if isinstance(action_ideas, dict) else None
+
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph("Short Action Ideas", heading_style))
+        if conservative:
+            story.append(Paragraph(_escape(f"Conservative: {conservative}"), body_style))
+        if tactical:
+            story.append(Paragraph(_escape(f"Tactical: {tactical}"), body_style))
+        if risk_control:
+            story.append(Paragraph(_escape(f"Risk control: {risk_control}"), body_style))
+    else:
+        story.append(Paragraph(_escape(plain_summary) if plain_summary else "—", body_style))
+
     story.append(PageBreak())
 
     story.append(Paragraph("1. Company Overview", section_style))
@@ -123,16 +172,16 @@ async def generate_full_report_pdf(record: dict[str, Any]) -> bytes:
     market_cond = _get(fred_data, "market_conditions") or "—"
     sector_perf = _get(yahoo_data, "sector_90d_performance")
     comps = _get(yahoo_data, "comparable_companies") or []
-    story.append(Paragraph(company_name, heading_style))
+    story.append(Paragraph(_escape(str(company_name)), heading_style))
     ctx_parts = []
     if fed_rate is not None:
         ctx_parts.append(f"Fed funds rate: {_fmt(fed_rate)}%")
     ctx_parts.append(f"Market conditions: {_escape(str(market_cond))}")
     if sector_perf is not None:
         ctx_parts.append(f"Sector 90-day performance: {_fmt(sector_perf)}%")
-    story.append(Paragraph("; ".join(ctx_parts) if ctx_parts else "—", body_style))
+    story.append(Paragraph(_escape("; ".join(ctx_parts) if ctx_parts else "—"), body_style))
     if comps:
-        story.append(Paragraph(f"Comparable companies: {', '.join(comps)}", body_style))
+        story.append(Paragraph(_escape(f"Comparable companies: {', '.join(comps)}"), body_style))
     story.append(PageBreak())
 
     story.append(Paragraph("3. Scenario Analysis", section_style))
@@ -185,8 +234,8 @@ async def generate_full_report_pdf(record: dict[str, Any]) -> bytes:
 
     story.append(Paragraph("6. Data Sources", section_style))
     sources_text = ", ".join(sources_active) if sources_active else "—"
-    story.append(Paragraph(f"{sources_text}", body_style))
-    story.append(Paragraph(f"Retrieved: {sources_ts}", body_style))
+    story.append(Paragraph(_escape(f"{sources_text}"), body_style))
+    story.append(Paragraph(_escape(f"Retrieved: {sources_ts}"), body_style))
     story.append(PageBreak())
 
     story.append(Paragraph("Disclaimer", section_style))
@@ -194,7 +243,7 @@ async def generate_full_report_pdf(record: dict[str, Any]) -> bytes:
     story.append(Spacer(1, 0.2 * inch))
     story.append(
         Paragraph(
-            f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}.",
+            _escape(f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}."),
             ParagraphStyle("Footer", parent=body_style, fontSize=8, textColor=colors.grey),
         )
     )
