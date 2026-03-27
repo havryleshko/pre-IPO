@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes_analysis import router as analysis_router
-from backend.api.routes_export import router as export_router
 from backend.api.websocket_progress import router as websocket_progress_router
 from backend.config.settings import get_settings
 from backend.database.connection import close_pool, get_pool
@@ -23,7 +22,6 @@ def create_app() -> FastAPI:
         await close_pool()
 
     app.include_router(analysis_router)
-    app.include_router(export_router)
     app.include_router(websocket_progress_router)
     return app
 

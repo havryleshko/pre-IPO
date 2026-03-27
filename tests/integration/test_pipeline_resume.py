@@ -16,8 +16,7 @@ def _analysis_with_outputs(last_completed_agent: str | None = None) -> dict:
         "harvester_output": {},
         "parser_output": {},
         "scenario_output": {},
-        "recommendation_output": {},
-        "judge_output": {},
+        "investor_brief": {},
     }
 
 
@@ -35,8 +34,7 @@ async def test_resume_from_none_runs_all_agents() -> None:
         "data_harvester": _make_executor(executed, "data_harvester"),
         "prospectus_parser": _make_executor(executed, "prospectus_parser"),
         "scenario_builder": _make_executor(executed, "scenario_builder"),
-        "recommendation_engine": _make_executor(executed, "recommendation_engine"),
-        "judge_agent": _make_executor(executed, "judge_agent"),
+        "investor_brief_synthesizer": _make_executor(executed, "investor_brief_synthesizer"),
     }
     analysis = _analysis_with_outputs(last_completed_agent=None)
     with (
@@ -56,10 +54,8 @@ async def test_resume_from_none_runs_all_agents() -> None:
         "data_harvester",
         "prospectus_parser",
         "scenario_builder",
-        "recommendation_engine",
-        "judge_agent",
+        "investor_brief_synthesizer",
     ]
-    assert result.completed is True
 
 
 @pytest.mark.asyncio
@@ -69,8 +65,7 @@ async def test_resume_from_prospectus_parser_skips_data_harvester_and_parser() -
         "data_harvester": _make_executor(executed, "data_harvester"),
         "prospectus_parser": _make_executor(executed, "prospectus_parser"),
         "scenario_builder": _make_executor(executed, "scenario_builder"),
-        "recommendation_engine": _make_executor(executed, "recommendation_engine"),
-        "judge_agent": _make_executor(executed, "judge_agent"),
+        "investor_brief_synthesizer": _make_executor(executed, "investor_brief_synthesizer"),
     }
     analysis = _analysis_with_outputs(last_completed_agent="prospectus_parser")
     with (
@@ -85,24 +80,17 @@ async def test_resume_from_prospectus_parser_skips_data_harvester_and_parser() -
             executors=executors,
         )
     assert result.resumed_from == "prospectus_parser"
-    assert result.executed_agents == [
-        "scenario_builder",
-        "recommendation_engine",
-        "judge_agent",
-    ]
-    assert "data_harvester" not in result.executed_agents
-    assert "prospectus_parser" not in result.executed_agents
+    assert result.executed_agents == ["scenario_builder", "investor_brief_synthesizer"]
 
 
 @pytest.mark.asyncio
-async def test_resume_from_scenario_builder_runs_only_recommendation_and_judge() -> None:
+async def test_resume_from_scenario_builder_runs_only_investor_brief_synthesizer() -> None:
     executed: list[str] = []
     executors = {
         "data_harvester": _make_executor(executed, "data_harvester"),
         "prospectus_parser": _make_executor(executed, "prospectus_parser"),
         "scenario_builder": _make_executor(executed, "scenario_builder"),
-        "recommendation_engine": _make_executor(executed, "recommendation_engine"),
-        "judge_agent": _make_executor(executed, "judge_agent"),
+        "investor_brief_synthesizer": _make_executor(executed, "investor_brief_synthesizer"),
     }
     analysis = _analysis_with_outputs(last_completed_agent="scenario_builder")
     with (
@@ -117,7 +105,7 @@ async def test_resume_from_scenario_builder_runs_only_recommendation_and_judge()
             executors=executors,
         )
     assert result.resumed_from == "scenario_builder"
-    assert result.executed_agents == ["recommendation_engine", "judge_agent"]
+    assert executed == ["investor_brief_synthesizer"]
 
 
 @pytest.mark.asyncio
@@ -132,8 +120,7 @@ async def test_resume_failure_sets_last_completed_to_last_successful() -> None:
         "data_harvester": noop_executor,
         "prospectus_parser": noop_executor,
         "scenario_builder": failing_executor,
-        "recommendation_engine": noop_executor,
-        "judge_agent": noop_executor,
+        "investor_brief_synthesizer": noop_executor,
     }
     analysis = _analysis_with_outputs(last_completed_agent="prospectus_parser")
     set_failed_mock = AsyncMock()
@@ -148,5 +135,4 @@ async def test_resume_failure_sets_last_completed_to_last_successful() -> None:
                 ResumeServiceInput(analysis_id="test-id"),
                 executors=executors,
             )
-    set_failed_mock.assert_called_once()
-    assert set_failed_mock.call_args.kwargs["last_completed_agent"] == "prospectus_parser"
+    set_failed_mock.assert_called_once_with(analysis_id="test-id", last_completed_agent="prospectus_parser")

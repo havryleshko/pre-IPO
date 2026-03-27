@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -838,7 +838,11 @@ class ProspectusParser:
             return None
         return float(match.group(1))
 
-    def _classify_offering_type(self, text: str, insider_selling_percentage: float | None) -> str:
+    def _classify_offering_type(
+        self,
+        text: str,
+        insider_selling_percentage: float | None,
+    ) -> Literal["primary", "secondary", "mixed"]:
         lower = text.lower()
         if "secondary offering" in lower:
             return "secondary"
@@ -848,7 +852,13 @@ class ProspectusParser:
             return "mixed"
         return "primary"
 
-    def _derive_confidence(self, filing_text: str, news_text: str, financials: Financials, flags: list[FlaggedSection]) -> str:
+    def _derive_confidence(
+        self,
+        filing_text: str,
+        news_text: str,
+        financials: Financials,
+        flags: list[FlaggedSection],
+    ) -> Literal["high", "medium", "low"]:
         if not filing_text and not news_text:
             return "low"
         if not filing_text and news_text:

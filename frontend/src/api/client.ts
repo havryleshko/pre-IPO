@@ -23,25 +23,11 @@ export interface AnalysisOutputsResponse {
   status: AnalysisStatus;
   complexity_tier: ComplexityTier;
   last_completed_agent: string | null;
-  export_locked: boolean;
   created_at: string;
   harvester_output: HarvesterOutput | null;
   parser_output: ParserOutput | null;
   scenario_output: unknown;
-  recommendation_output: RecommendationOutput | null;
-  judge_output: unknown;
-  flags: Array<{ flag_id?: string; section?: string; severity?: string; reason?: string }>;
-}
-
-export interface ConfirmFlagsResponse {
-  analysis_id: string;
-  ifa_confirmed_flags: string[];
-  export_locked: boolean;
-}
-
-export interface ExportLockResponse {
-  analysis_id: string;
-  export_locked: boolean;
+  investor_brief: InvestorBrief | null;
 }
 
 export interface AgentStatusMessage {
@@ -124,6 +110,30 @@ export interface ParserOutput {
   flagged_sections?: Array<{ section?: string; reason?: string; verify_at?: string }>;
 }
 
+export interface Instrument {
+  name: string;
+  ticker?: string | null;
+  rationale_one_liner: string;
+}
+
+export interface Reference {
+  id: number;
+  label: string;
+  url?: string | null;
+  source_hint?: string | null;
+}
+
+export interface InvestorBrief {
+  company_name: string;
+  sector_theme: string;
+  primary_instrument: Instrument;
+  alternates: Instrument[];
+  overview_markdown: string;
+  references: Reference[];
+  disclaimer_short: string;
+  generated_at: string;
+}
+
 export interface HarvesterOutput {
   sources_active?: string[];
   sources_failed?: Array<{ source?: string; reason?: string }>;
@@ -160,20 +170,6 @@ export async function createAnalysis(companyName: string): Promise<CreateAnalysi
 
 export async function getAnalysis(analysisId: string): Promise<AnalysisOutputsResponse> {
   return fetchJson<AnalysisOutputsResponse>(`${API_BASE}/analyses/${analysisId}`);
-}
-
-export async function confirmFlags(
-  analysisId: string,
-  flagIds: string[]
-): Promise<ConfirmFlagsResponse> {
-  return fetchJson<ConfirmFlagsResponse>(`${API_BASE}/analyses/${analysisId}/confirm-flags`, {
-    method: "POST",
-    body: JSON.stringify({ flag_ids: flagIds }),
-  });
-}
-
-export async function getExportLock(analysisId: string): Promise<ExportLockResponse> {
-  return fetchJson<ExportLockResponse>(`${API_BASE}/analyses/${analysisId}/export/lock`);
 }
 
 export async function exportSummaryPdf(analysisId: string): Promise<Blob> {

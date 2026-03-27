@@ -19,8 +19,7 @@ _PIPELINE_ORDER: tuple[str, ...] = (
     "data_harvester",
     "prospectus_parser",
     "scenario_builder",
-    "recommendation_engine",
-    "judge_agent",
+    "investor_brief_synthesizer",
 )
 
 

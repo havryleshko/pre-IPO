@@ -44,7 +44,7 @@ async def create_analysis(
 ) -> asyncpg.Record:
     connection = await acquire_connection()
     try:
-        return await connection.fetchrow(
+        row = await connection.fetchrow(
             """
             INSERT INTO analyses (company_name, custom_name, complexity_tier, status)
             VALUES ($1, $2, $3, $4)
@@ -55,6 +55,9 @@ async def create_analysis(
             complexity_tier,
             "pending",
         )
+        if row is None:
+            raise RuntimeError("create_analysis: INSERT returned no row")
+        return row
     finally:
         await release_connection(connection)
 
@@ -208,75 +211,17 @@ async def save_recommendation_output(analysis_id: str, output: dict[str, Any]) -
         await release_connection(connection)
 
 
-async def save_judge_output(analysis_id: str, output: dict[str, Any]) -> str:
+async def save_investor_brief(analysis_id: str, output: dict[str, Any]) -> str:
     connection = await acquire_connection()
     try:
         return await connection.execute(
             """
             UPDATE analyses
-            SET judge_output = $2
+            SET investor_brief = $2
             WHERE id = $1
             """,
             analysis_id,
             _to_jsonb(output),
-        )
-    finally:
-        await release_connection(connection)
-
-
-async def save_final_report(analysis_id: str, report: dict[str, Any]) -> str:
-    connection = await acquire_connection()
-    try:
-        return await connection.execute(
-            """
-            UPDATE analyses
-            SET final_report = $2
-            WHERE id = $1
-            """,
-            analysis_id,
-            _to_jsonb(report),
-        )
-    finally:
-        await release_connection(connection)
-
-
-async def set_flags_and_export_lock(
-    analysis_id: str,
-    flags: list[dict[str, Any]],
-    export_locked: bool,
-) -> str:
-    connection = await acquire_connection()
-    try:
-        return await connection.execute(
-            """
-            UPDATE analyses
-            SET flags = $2, export_locked = $3
-            WHERE id = $1
-            """,
-            analysis_id,
-            _to_jsonb(flags),
-            export_locked,
-        )
-    finally:
-        await release_connection(connection)
-
-
-async def set_ifa_confirmed_flags(
-    analysis_id: str,
-    confirmed_flags: list[str],
-    export_locked: bool,
-) -> str:
-    connection = await acquire_connection()
-    try:
-        return await connection.execute(
-            """
-            UPDATE analyses
-            SET ifa_confirmed_flags = $2, export_locked = $3
-            WHERE id = $1
-            """,
-            analysis_id,
-            _to_jsonb(confirmed_flags),
-            export_locked,
         )
     finally:
         await release_connection(connection)

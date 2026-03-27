@@ -93,15 +93,12 @@ def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:
         "company_name": "TestCo",
         "status": "completed",
         "complexity_tier": "standard",
-        "last_completed_agent": "judge_agent",
-        "export_locked": False,
+        "last_completed_agent": "investor_brief_synthesizer",
         "created_at": datetime.now(timezone.utc),
         "harvester_output": None,
         "parser_output": None,
         "scenario_output": None,
-        "recommendation_output": None,
-        "judge_output": None,
-        "flags": [],
+        "investor_brief": None,
     }
     with patch(
         "backend.api.routes_analysis.get_analysis_by_id",
@@ -114,8 +111,7 @@ def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:
     assert data["analysis_id"] == analysis_id
     assert data["company_name"] == "TestCo"
     assert data["status"] == "completed"
-    assert data["last_completed_agent"] == "judge_agent"
-    assert data["export_locked"] is False
+    assert data["last_completed_agent"] == "investor_brief_synthesizer"
 
 
 def test_get_analysis_returns_404_when_not_found(client: TestClient) -> None:
@@ -126,65 +122,3 @@ def test_get_analysis_returns_404_when_not_found(client: TestClient) -> None:
     ):
         resp = client.get(f"/analyses/{uuid4()}")
     assert resp.status_code == 404
-
-
-def test_confirm_flags_returns_200_and_updates_export_locked(client: TestClient) -> None:
-    analysis_id = str(uuid4())
-    flag_id = str(uuid4())
-    record = {
-        "id": analysis_id,
-        "flags": [{"flag_id": flag_id, "section": "test"}],
-        "ifa_confirmed_flags": [],
-    }
-    with (
-        patch(
-            "backend.api.routes_analysis.get_analysis_by_id",
-            new_callable=AsyncMock,
-            return_value=record,
-        ),
-        patch(
-            "backend.api.routes_analysis.set_ifa_confirmed_flags",
-            new_callable=AsyncMock,
-        ),
-    ):
-        resp = client.post(
-            f"/analyses/{analysis_id}/confirm-flags",
-            json={"flag_ids": [flag_id]},
-        )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["analysis_id"] == analysis_id
-    assert flag_id in data["ifa_confirmed_flags"]
-    assert data["export_locked"] is False
-
-
-def test_confirm_flags_returns_404_when_analysis_not_found(client: TestClient) -> None:
-    with patch(
-        "backend.api.routes_analysis.get_analysis_by_id",
-        new_callable=AsyncMock,
-        return_value=None,
-    ):
-        resp = client.post(
-            f"/analyses/{uuid4()}/confirm-flags",
-            json={"flag_ids": []},
-        )
-    assert resp.status_code == 404
-
-
-def test_confirm_flags_returns_400_for_unknown_flag_id(client: TestClient) -> None:
-    analysis_id = str(uuid4())
-    record = {
-        "id": analysis_id,
-        "flags": [{"flag_id": str(uuid4()), "section": "test"}],
-        "ifa_confirmed_flags": [],
-    }
-    with patch(
-        "backend.api.routes_analysis.get_analysis_by_id",
-        new_callable=AsyncMock,
-        return_value=record,
-    ):
-        resp = client.post(
-            f"/analyses/{analysis_id}/confirm-flags",
-            json={"flag_ids": ["unknown-flag-id"]},
-        )
-    assert resp.status_code == 400

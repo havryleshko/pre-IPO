@@ -9,12 +9,8 @@ from backend.agents.complexity_classifier import (
     ComplexityClassifierInput,
     classify_complexity,
 )
-from backend.agents.judge_agent import JudgeAgent, JudgeAgentInput
 from backend.agents.prospectus_parser import ProspectusParser, ProspectusParserInput
-from backend.agents.recommendation_engine import (
-    RecommendationEngine,
-    RecommendationEngineInput,
-)
+from backend.agents.investor_brief_synthesizer import InvestorBriefSynthesizer, InvestorBriefSynthesizerInput
 from backend.agents.scenario_builder import ScenarioBuilder, ScenarioBuilderInput
 from backend.models.harvester_output import (
     CrunchbaseData,
@@ -75,16 +71,15 @@ def _make_store(analysis_id: str, company_name: str = "TestCo") -> dict:
         "harvester_output": None,
         "parser_output": None,
         "scenario_output": None,
-        "recommendation_output": None,
-        "judge_output": None,
-        "flags": None,
-        "export_locked": True,
+        "investor_brief": None,
         "created_at": datetime.now(timezone.utc),
     }
 
 
 @pytest.mark.asyncio
 async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
+    import os
+    os.environ["OPENAI_API_KEY"] = "test"
     analysis_id = str(uuid4())
     store = _make_store(analysis_id)
 
@@ -106,14 +101,9 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
             store["scenario_output"] = kw.get("output")
         return ""
 
-    async def save_recommendation(**kw: object) -> str:
+    async def save_investor_brief(**kw: object) -> str:
         if kw.get("analysis_id") == analysis_id:
-            store["recommendation_output"] = kw.get("output")
-        return ""
-
-    async def save_judge(**kw: object) -> str:
-        if kw.get("analysis_id") == analysis_id:
-            store["judge_output"] = kw.get("output")
+            store["investor_brief"] = kw.get("output")
         return ""
 
     expected_id = analysis_id
@@ -127,16 +117,29 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
                 store["last_completed_agent"] = lca
         return ""
 
-    async def set_flags(**kw: object) -> str:
-        if kw.get("analysis_id") == analysis_id:
-            store["flags"] = kw.get("flags")
-            store["export_locked"] = kw.get("export_locked", True)
-        return ""
-
     pp = ProspectusParser()
     sb = ScenarioBuilder()
-    re = RecommendationEngine()
-    judge = JudgeAgent()
+    class MockInvestorBriefSynthesizer:
+        async def run(self, payload):
+            await save_investor_brief(
+                analysis_id=payload.analysis_id,
+                output={
+                    "company_name": "TestCo",
+                    "sector_theme": "Tech",
+                    "primary_instrument": {
+                        "name": "Tech ETF",
+                        "ticker": "TECH",
+                        "rationale_one_liner": "Good"
+                    },
+                    "alternates": [],
+                    "overview_markdown": "Test overview",
+                    "references": [],
+                    "disclaimer_short": "No advice."
+                }
+            )
+
+    ibs = MockInvestorBriefSynthesizer()
+    
 
     async def pp_executor(aid: str) -> None:
         await pp.run(ProspectusParserInput(analysis_id=aid))
@@ -144,11 +147,8 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     async def sb_executor(aid: str) -> None:
         await sb.run(ScenarioBuilderInput(analysis_id=aid))
 
-    async def re_executor(aid: str) -> None:
-        await re.run(RecommendationEngineInput(analysis_id=aid))
-
-    async def judge_executor(aid: str) -> None:
-        await judge.run(JudgeAgentInput(analysis_id=aid))
+    async def ibs_executor(aid: str) -> None:
+        await ibs.run(InvestorBriefSynthesizerInput(analysis_id=aid))
 
     async def set_complexity_tier(aid: str, tier: str) -> str:
         if aid == analysis_id:
@@ -167,27 +167,28 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
         ("backend.database.queries.save_harvester_output", save_harvester),
         ("backend.database.queries.save_parser_output", save_parser),
         ("backend.database.queries.save_scenario_output", save_scenario),
-        ("backend.database.queries.save_recommendation_output", save_recommendation),
-        ("backend.database.queries.save_judge_output", save_judge),
+        ("backend.database.queries.save_investor_brief", save_investor_brief),
+        
         ("backend.database.queries.update_analysis_status", update_status),
-        ("backend.database.queries.set_flags_and_export_lock", set_flags),
+        
         ("backend.database.queries.set_analysis_complexity_tier", set_complexity_tier),
         ("backend.database.queries.set_analysis_active_sources", set_active_sources),
         ("backend.services.resume_service.get_analysis_by_id", get_analysis),
         ("backend.services.retry_service.get_analysis_by_id", get_analysis),
+        ("backend.services.pipeline_runner.get_analysis_by_id", get_analysis),
         ("backend.agents.prospectus_parser.get_analysis_by_id", get_analysis),
         ("backend.agents.scenario_builder.get_analysis_by_id", get_analysis),
-        ("backend.agents.recommendation_engine.get_analysis_by_id", get_analysis),
-        ("backend.agents.judge_agent.get_analysis_by_id", get_analysis),
+        ("backend.agents.investor_brief_synthesizer.get_analysis_by_id", get_analysis),
+        
         ("backend.agents.data_harvester.save_harvester_output", save_harvester),
         ("backend.agents.prospectus_parser.save_parser_output", save_parser),
         ("backend.agents.scenario_builder.save_scenario_output", save_scenario),
-        ("backend.agents.recommendation_engine.save_recommendation_output", save_recommendation),
-        ("backend.agents.judge_agent.save_judge_output", save_judge),
-        ("backend.agents.judge_agent.set_flags_and_export_lock", set_flags),
+        ("backend.agents.investor_brief_synthesizer.save_investor_brief", save_investor_brief),
+        
+        
         ("backend.services.analysis_status_service.update_analysis_status", update_status),
     ]
-    log_return = {"id": "1"}
+    log_return = {"id": str(uuid4())}
     with ExitStack() as stack:
         stack.enter_context(patch("backend.api.websocket_progress.emit_agent_status"))
         stack.enter_context(patch("backend.services.pipeline_runner.fetch_sec_edgar", new=_mock_sec_edgar))
@@ -197,11 +198,12 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
         stack.enter_context(patch("backend.services.pipeline_runner.fetch_yahoo_finance", new=_mock_yahoo))
         stack.enter_context(patch("backend.services.pipeline_runner.fetch_fred_data", new=_mock_fred))
         stack.enter_context(patch("backend.services.pipeline_runner.fetch_twitter", new=_mock_twitter))
+        stack.enter_context(patch("backend.services.pipeline_runner.InvestorBriefSynthesizer", new=MockInvestorBriefSynthesizer))
         for target, side_effect in patches:
             stack.enter_context(
                 patch(target, new_callable=AsyncMock, side_effect=side_effect)
             )
-        for mod in ["data_harvester", "prospectus_parser", "scenario_builder", "recommendation_engine", "judge_agent"]:
+        for mod in ["data_harvester", "prospectus_parser", "scenario_builder", "investor_brief_synthesizer"]:
             stack.enter_context(
                 patch(f"backend.agents.{mod}.log_agent_run_start", new_callable=AsyncMock, return_value=log_return)
             )
@@ -217,7 +219,14 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
 
     assert result.completed is True
     assert result.analysis_id == analysis_id
-    expected_classifier = classify_complexity(ComplexityClassifierInput(company_name=store["company_name"]))
+    expected_classifier = classify_complexity(
+        ComplexityClassifierInput(
+            company_name=store["company_name"],
+            has_s1_filed=False,
+            media_coverage_score=0,
+            source_count_hint=5,
+        )
+    )
     assert store["complexity_tier"] == expected_classifier.complexity_tier
     scenario_output = store.get("scenario_output")
     assert scenario_output is not None
@@ -226,3 +235,11 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     assert "pessimistic" in scenarios
     assert "realistic" in scenarios
     assert "optimistic" in scenarios
+
+    investor_brief = store.get("investor_brief")
+    assert isinstance(investor_brief, dict)
+    assert "company_name" in investor_brief
+    assert "sector_theme" in investor_brief
+    assert "primary_instrument" in investor_brief
+    assert "overview_markdown" in investor_brief
+    assert "references" in investor_brief

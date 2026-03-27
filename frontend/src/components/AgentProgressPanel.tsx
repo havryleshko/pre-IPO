@@ -7,8 +7,7 @@ const AGENT_ORDER = [
   "data_harvester",
   "prospectus_parser",
   "scenario_builder",
-  "recommendation_engine",
-  "judge_agent",
+  "investor_brief_synthesizer",
 ] as const;
 
 const AGENT_LABELS: Record<string, string> = {
@@ -16,14 +15,21 @@ const AGENT_LABELS: Record<string, string> = {
   data_harvester: "Data Harvester",
   prospectus_parser: "Prospectus Parser",
   scenario_builder: "Scenario Builder",
-  recommendation_engine: "Recommendation Engine",
-  judge_agent: "Judge Agent",
+  investor_brief_synthesizer: "Research Brief",
 };
 
 type AgentStatus = "pending" | "running" | "completed" | "failed";
 
 function toKey(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+function createInitialAgentState(): Record<string, { status: AgentStatus; toolCall: string | null }> {
+  const init: Record<string, { status: AgentStatus; toolCall: string | null }> = {};
+  for (const a of AGENT_ORDER) {
+    init[a] = { status: "pending", toolCall: null };
+  }
+  return init;
 }
 
 export interface AgentProgressPanelProps {
@@ -33,14 +39,12 @@ export interface AgentProgressPanelProps {
 
 export function AgentProgressPanel({ analysisId, lastCompletedAgent }: AgentProgressPanelProps) {
   const [agentState, setAgentState] = useState<Record<string, { status: AgentStatus; toolCall: string | null }>>(
-    () => {
-      const init: Record<string, { status: AgentStatus; toolCall: string | null }> = {};
-      for (const a of AGENT_ORDER) {
-        init[a] = { status: "pending", toolCall: null };
-      }
-      return init;
-    }
+    () => createInitialAgentState()
   );
+
+  useEffect(() => {
+    setAgentState(createInitialAgentState());
+  }, [analysisId]);
 
   useEffect(() => {
     if (!analysisId) return;
@@ -94,31 +98,38 @@ export function AgentProgressPanel({ analysisId, lastCompletedAgent }: AgentProg
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <ul className="flex flex-col gap-3">
-        {AGENT_ORDER.map((key) => {
+    <div className="flex flex-col items-center justify-center p-8 border border-border/50 rounded-xl bg-muted/10 shadow-sm">
+      <h3 className="text-sm font-medium mb-6 text-foreground/80">Generating Research Brief</h3>
+      <div className="flex w-full max-w-lg items-center justify-between">
+        {AGENT_ORDER.map((key, index) => {
           const { status, toolCall } = agentState[key] ?? { status: "pending" as AgentStatus, toolCall: null };
           const label = AGENT_LABELS[key] ?? key;
+          const isLast = index === AGENT_ORDER.length - 1;
+          
           return (
-            <li key={key} className="flex flex-col gap-1 text-sm">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0" aria-hidden="true">
-                    {renderIcon(status)}
-                  </span>
-                  <span className="min-w-0 truncate font-medium">{label}</span>
+            <div key={key} className="flex items-center flex-1 last:flex-none">
+              <div className="flex flex-col items-center gap-2 w-24">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-background border border-border/50 shadow-sm relative">
+                  {renderIcon(status)}
+                  {status === "running" && (
+                    <span className="absolute -bottom-6 w-32 text-center text-[10px] text-muted-foreground truncate" title={toolCall ?? ""}>
+                      {toolCall || "Working..."}
+                    </span>
+                  )}
                 </div>
-                <span className="text-xs text-muted-foreground capitalize">{status}</span>
+                <span className={`text-[10px] font-medium text-center ${status === "pending" ? "text-muted-foreground" : "text-foreground/90"}`}>
+                  {label}
+                </span>
               </div>
-              {status === "running" && toolCall && (
-                <div className="pl-6 text-[12px] text-[#52525b] truncate" title={toolCall}>
-                  {toolCall}
+              {!isLast && (
+                <div className="flex-1 mx-2 h-px bg-border/60 relative">
+                  {status === "completed" && <div className="absolute inset-0 bg-primary h-px" />}
                 </div>
               )}
-            </li>
+            </div>
           );
         })}
-      </ul>
+      </div>
     </div>
   );
 }

@@ -65,18 +65,15 @@ User Input (company name)
   saves plan to memory
   classifies complexity
         ↓ spawns in parallel
-  ┌─────┬──────┬──────┬──────┐
-  ↓     ↓      ↓      ↓      ↓
-[DH]  [PP]   [SB]   [RE]
-Data  Parse  Scen   Reco
-Harv  Prosp  Build  Engin
+  ┌─────┬──────┬──────┬─────────┐
+  ↓     ↓      ↓      ↓         ↓
+[DH]  [PP]   [SB]   [IBS]
+Data  Parse  Scen   Inv Brief
+Harv  Prosp  Build  Synth
         ↓     ↓      ↓      ↓
   each agent writes directly to PostgreSQL
   passes analysis_id reference only
-               ↓
-         [Judge Agent]
-         validates + flags
-         self-improvement log
+
                ↓
         Final Report → Frontend
 ```
@@ -427,168 +424,51 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 
 ---
 
-### Agent 4: Recommendation Engine (Subagent)
+### Agent 4: Investor Brief Synthesizer (Subagent)
 
-**Single responsibility:** Translate scenarios into simple, retail-readable action guidance and identify public funds likely to benefit pre-IPO.
+**Single responsibility:** Translate scenarios, parsed data, and harvested info into a single, retail-readable investor brief. 
 
-**Principle 4 — Tool description:**
-`fund_beneficiary_lookup` — "Look up public fund exposure signals and holdings relationships. Use for identifying listed funds with potential pre-IPO benefit paths."
+**Input:** Reads `harvester_output`, `parser_output`, and `scenario_output` from PostgreSQL via `analysis_id`.
 
-**Input:** Reads `scenario_output` + `parser_output` from PostgreSQL via `analysis_id`
-
-**Output written directly to PostgreSQL** (`analyses.recommendation_output`). Returns `analysis_id` only.
+**Output written directly to PostgreSQL** (`analyses.investor_brief`). Returns `analysis_id` only.
 
 ```json
 {
   "company_name": "string",
-  "pre_ipo_beneficiary_funds": {
-    "candidates": [
-      {
-        "fund_name": "string",
-        "confidence": "high | medium | low",
-        "relation_type": "string",
-        "evidence": ["array"]
-      }
-    ],
-    "methodology": "string"
+  "sector_theme": "string (short)",
+  "primary_instrument": {
+    "name": "string",
+    "ticker": "string | null",
+    "rationale_one_liner": "string"
   },
-  "recommendations": {
-    "pessimistic": {
-      "recommended_positioning": "string",
-      "conviction": "high | medium | low",
-      "rationale": "string (one sentence, cites scenario driver)",
-      "risk_warning": "string (one sentence)",
-      "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
-    },
-    "realistic": {
-      "recommended_positioning": "string",
-      "conviction": "high | medium | low",
-      "rationale": "string (one sentence, cites scenario driver)",
-      "risk_warning": "string (one sentence)",
-      "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
-    },
-    "optimistic": {
-      "recommended_positioning": "string",
-      "conviction": "high | medium | low",
-      "rationale": "string (one sentence, cites scenario driver)",
-      "risk_warning": "string (one sentence)",
-      "client_paragraph": "string (300-400 words, neutral tone, no legal jargon)"
+  "alternates": [
+    {
+      "name": "string",
+      "ticker": "string | null",
+      "rationale_one_liner": "string"
     }
-  },
-  "plain_english_summary": "string",
-  "retail_summary": {
-    "verdict_line": "string (single sentence, plain language)",
-    "what_i_see_now": ["array of short bullets"],
-    "why_that_matters": ["array of short bullets"],
-    "the_good": ["array of short bullets"],
-    "the_risk": ["array of short bullets"],
-    "simple_conclusion": "string (single sentence)",
-    "key_data_points": ["array of concise numeric bullets"],
-    "action_ideas": {
-      "conservative": "string",
-      "tactical": "string",
-      "risk_control": "string"
-    },
-    "is_preliminary": "boolean"
-  },
+  ],
+  "overview_markdown": "string (retail tone; inline [1] refs)",
+  "references": [
+    {
+      "id": "number",
+      "label": "string",
+      "url": "string | null",
+      "source_hint": "string | null"
+    }
+  ],
+  "disclaimer_short": "string",
   "generated_at": "ISO8601"
 }
 ```
 
 **Failure modes:**
-- Positioning recommendation lacks sufficient evidence → flag and regenerate with stricter evidence constraints
-- Rationale exceeds one sentence → regenerate
-- Paragraph outside 500 words → regenerate with word count constraint, but don't try to have same length every time; instead return whatever length is appropriate
+- Instrument ticker hallucination → require tickers to match a small allowlist or allow "no ticker".
+- No filing data → brief must state data gaps upfront in overview.
 
 ---
 
-### Agent 5: Judge Agent
 
-**Single responsibility:** Validate full output. Auto-retry failing agents once. Flag unresolved issues in amber with source references. Block export until IFA confirms review.
-
-**Principle 5 — Let agents improve themselves:**
-When Judge detects a consistent failure pattern across multiple runs, it:
-1. Logs the failure pattern
-2. Analyses why the agent is failing
-3. Suggests a prompt improvement
-4. Logs to `agent_improvements` table for developer review
-
-This creates a self-improving loop over time.
-
-**Principle 7 — Interleaved thinking:**
-Uses interleaved thinking after each validation check to assess severity and decide retry vs flag.
-
-**Input:** Reads all agent outputs from PostgreSQL via `analysis_id`
-
-**Validation checklist:**
-- [ ] All 3 scenarios present and complete
-- [ ] Probability weightings sum to exactly 100%
-- [ ] Every risk factor has a named source citation
-- [ ] Pre-IPO beneficiary funds section present with evidence
-- [ ] Positioning recommendation present for each scenario
-- [ ] Risk warning in all 3 recommendations
-- [ ] All financial metrics sourced from S-1 or verified news
-- [ ] Plain-English summary free of legal jargon
-- [ ] Retail summary is simple, concise, and non-technical
-- [ ] Verdict/action consistency: headline, conclusion, and action ideas do not conflict
-- [ ] If data confidence is low, output is clearly marked preliminary/watch-only
-- [ ] Client paragraph up to 500 words
-- [ ] All 3 time horizons present per scenario
-- [ ] Sentiment score present or flagged with reason
-- [ ] No hallucinated names, tickers, or figures
-- [ ] All weighting rationales cite specific data points
-- [ ] No agent output is null or empty unexpectedly
-
-**Retry logic:**
-1. Check fails
-2. Auto-retry failing agent once
-3. Retry passes → clean output, IFA sees nothing
-4. Retry fails → amber flag with exact source reference, export locked
-5. IFA confirms each flag → export unlocks
-
-**Self-improvement log:**
-```python
-improvement_suggestion = {
-  "agent": "prospectus_parser",
-  "failure_pattern": "burn_rate consistently null despite being in filing",
-  "suggested_prompt_addition": "Look for 'monthly operating expenses' and 'cash used in operations' as alternative burn rate signals",
-  "detected_at": "ISO8601",
-  "occurrence_count": "number"
-}
-# Write to agent_improvements table
-```
-
-**Flag format:**
-```
-[Section Name] — Low Confidence
-Reason: [specific reason]
-Verify at: [exact source and page/section reference]
-Action required: Review before presenting to client.
-```
-
-**Output written to PostgreSQL** (`analyses.judge_output`):
-```json
-{
-  "validation_passed": "boolean",
-  "flags": [
-    {
-      "flag_id": "uuid",
-      "section": "string",
-      "severity": "amber | red",
-      "reason": "string",
-      "source_reference": "string",
-      "retry_attempted": "boolean",
-      "retry_passed": "boolean",
-      "improvement_suggestion": "string | null"
-    }
-  ],
-  "export_locked": "boolean",
-  "ifa_confirmed_flags": ["array of confirmed flag_ids"],
-  "validated_at": "ISO8601"
-}
-```
-
----
 
 ## Data Schema — Database (Docker PostgreSQL)
 
@@ -605,12 +485,7 @@ CREATE TABLE analyses (
   harvester_output JSONB,
   parser_output JSONB,
   scenario_output JSONB,
-  recommendation_output JSONB,
-  judge_output JSONB,
-  final_report JSONB,
-  flags JSONB,
-  ifa_confirmed_flags JSONB,
-  export_locked BOOLEAN DEFAULT true,
+  investor_brief JSONB,
   created_at TIMESTAMP DEFAULT NOW(),
   saved BOOLEAN DEFAULT false,
   saved_at TIMESTAMP
@@ -675,42 +550,16 @@ CREATE TABLE agent_improvements (
   - ⬜ / ⏳ / ✅ / ❌ Data Harvester
   - ⬜ / ⏳ / ✅ / ❌ Prospectus Parser
   - ⬜ / ⏳ / ✅ / ❌ Scenario Builder
-  - ⬜ / ⏳ / ✅ / ❌ Recommendation Engine
-  - ⬜ / ⏳ / ✅ / ❌ Judge Agent
+  - ⬜ / ⏳ / ✅ / ❌ Research Brief
 - Active tool calls shown per agent ("Fetching SEC EDGAR... Crunchbase... NewsAPI...")
-- Amber flags listed with source references
-- Confirm flags button (unlocks export)
 
 **Right panel (70% width):**
-Primary retail summary card first, then scenario details (shadcn Card):
+- Disclaimer (short)
+- Overview (markdown with inline citations)
+- Sector / Theme
+- Primary investment idea + alternates
+- References list
 
-Retail summary card:
-- One-sentence verdict
-- What I see now
-- Why that matters
-- The good / The risk
-- Simple conclusion
-- Key data points used
-- 3 action ideas (Conservative, Tactical, Risk control)
-
-Below retail summary, scenario cards:
-
-| 🔴 Pessimistic X% | 🟡 Realistic X% | 🟢 Optimistic X% |
-|---|---|---|
-| Drivers (sourced) | Drivers (sourced) | Drivers (sourced) |
-| Key risks (sourced) | Key risks (sourced) | Key risks (sourced) |
-| 30d / 90d / 1yr | 30d / 90d / 1yr | 30d / 90d / 1yr |
-| Positioning guidance | Positioning guidance | Positioning guidance |
-| Rationale | Rationale | Rationale |
-| ⚠️ Risk warning | ⚠️ Risk warning | ⚠️ Risk warning |
-
-**Below cards:**
-- Plain-English prospectus summary (collapsible)
-- X/Twitter sentiment score bar
-- Client-forwardable paragraph (copyable)
-- Data sources with retrieval timestamps (collapsible)
-- Export Summary PDF button
-- Export Full Report PDF button
 - Save Report → custom name dialog
 
 **shadcn components:**
@@ -718,28 +567,7 @@ Card, Button, Input, Progress, Badge, Alert, Dialog, Collapsible, Separator, Too
 
 ---
 
-## 📄 PDF Export
 
-**Export Summary (one page):**
-- Company name + IPO date
-- Three scenario cards with probability weightings
-- Price targets table (30d / 90d / 1yr per scenario)
-- One positioning recommendation per scenario with risk warning
-- Data sources footer with retrieval timestamps
-- Timestamp + disclaimer
-
-**Export Full Report (multi-page):**
-- Cover page — company name, analysis date, disclaimer
-- Executive summary
-- Section 1: Company Overview (plain-English prospectus summary)
-- Section 2: Market Context (FRED macro data, sector performance)
-- Section 3: Scenario Analysis (full detail with weighting rationale + source citations)
-- Section 4: Recommendations (positioning per scenario + risk warnings)
-- Section 5: Supporting Evidence (key X/Twitter quotes with attribution)
-- Section 6: Data Sources (all active sources with retrieval timestamps)
-- Disclaimer page
-
----
 
 ## 🛠️ Tech Stack
 

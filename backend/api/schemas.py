@@ -3,10 +3,9 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from backend.models.analysis import AnalysisComplexityTier, AnalysisStatus
 from backend.models.harvester_output import HarvesterOutput
-from backend.models.judge_output import JudgeFlag, JudgeOutput
 from backend.models.parser_output import ParserOutput
-from backend.models.recommendation_output import RecommendationOutput
 from backend.models.scenario_output import ScenarioOutput
+from backend.models.investor_brief import InvestorBrief
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -27,11 +26,8 @@ class AnalysisOutputsResponse(BaseModel):
     status: AnalysisStatus
     complexity_tier: AnalysisComplexityTier
     last_completed_agent: str | None = None
-    export_locked: bool = True
     created_at: datetime
     harvester_output: HarvesterOutput | None = None
     parser_output: ParserOutput | None = None
     scenario_output: ScenarioOutput | None = None
-    recommendation_output: RecommendationOutput | None = None
-    judge_output: JudgeOutput | None = None
-    flags: list[JudgeFlag] = Field(default_factory=list)
+    investor_brief: InvestorBrief | None = None

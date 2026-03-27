@@ -6,6 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "pre-ipo"
 version = "0.1.0"
 requires-python = ">=3.12"
+dependencies = [
+    "asyncpg",
+    "fastapi",
+    "uvicorn[standard]",
+    "langgraph",
+    "pydantic",
+    "pydantic-settings",
+    "yfinance",
+    "httpx",
+    "reportlab",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
