@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -23,8 +23,20 @@ from backend.services.agent_run_logger import (
     log_agent_run_failed,
     log_agent_run_start,
 )
+from backend.tools.sec_edgar_client import fetch_post_ipo_filings
+from backend.api.websocket_progress import emit_agent_status
 
 logger = logging.getLogger(__name__)
+
+
+def _ipo_history_json_safe(data: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not data:
+        return None
+    out = dict(data)
+    lcd = out.get("lock_up_cliff_date")
+    if isinstance(lcd, (date, datetime)):
+        out["lock_up_cliff_date"] = lcd.isoformat() if isinstance(lcd, date) else lcd.date().isoformat()
+    return out
 
 
 class DataHarvesterInput(BaseModel):
@@ -33,6 +45,9 @@ class DataHarvesterInput(BaseModel):
     complexity_tier: AnalysisComplexityTier
     active_sources: list[str]
     task_boundaries: str = ""
+    ticker: str | None = None
+    ipo_date: date | None = None
+    ipo_price_history: dict[str, Any] | None = None
 
 
 class DataHarvesterOutput(BaseModel):
@@ -121,33 +136,42 @@ class DataHarvester:
         source_names: list[str] = []
         coroutines: list[Any] = []
 
+        async def _wrap_source(source_name: str, coro: Any) -> Any:
+            emit_agent_status(
+                analysis_id=payload.analysis_id,
+                agent_name="single_agent",
+                status="running",
+                tool_call=source_name,
+            )
+            return await coro
+
         if "sec_edgar" in active:
             source_names.append("sec_edgar")
-            coroutines.append(self._sec_edgar(payload.company_name))
+            coroutines.append(_wrap_source("sec_edgar", self._sec_edgar(payload.company_name)))
 
         if "rss_feeds" in active:
             source_names.append("rss_feeds")
-            coroutines.append(self._rss_feeds(payload.company_name))
+            coroutines.append(_wrap_source("rss_feeds", self._rss_feeds(payload.company_name)))
 
         if "news_api" in active:
             source_names.append("news_api")
-            coroutines.append(self._news_api(payload.company_name))
+            coroutines.append(_wrap_source("news_api", self._news_api(payload.company_name)))
 
         if "crunchbase" in active:
             source_names.append("crunchbase")
-            coroutines.append(self._crunchbase(payload.company_name))
+            coroutines.append(_wrap_source("crunchbase", self._crunchbase(payload.company_name)))
 
         if "yahoo_finance" in active:
             source_names.append("yahoo_finance")
-            coroutines.append(self._yahoo_finance(payload.company_name))
+            coroutines.append(_wrap_source("yahoo_finance", self._yahoo_finance(payload.company_name)))
 
         if "fred" in active:
             source_names.append("fred")
-            coroutines.append(self._fred())
+            coroutines.append(_wrap_source("fred", self._fred()))
 
         if "twitter" in active:
             source_names.append("twitter")
-            coroutines.append(self._twitter(payload.company_name))
+            coroutines.append(_wrap_source("twitter", self._twitter(payload.company_name)))
 
         raw_results = await asyncio.gather(*coroutines, return_exceptions=True)
 
@@ -187,6 +211,28 @@ class DataHarvester:
                 + ", ".join(f.source for f in sources_failed)
             )
 
+        post_ipo_10k: str | None = None
+        if payload.ticker and payload.ipo_date:
+            try:
+                ten_k_text = await fetch_post_ipo_filings(payload.ticker, payload.ipo_date)
+            except Exception as exc:
+                logger.warning(
+                    "Post-IPO 10-K fetch failed for analysis_id=%s: %s",
+                    payload.analysis_id,
+                    exc,
+                )
+                ten_k_text = None
+            if isinstance(ten_k_text, str) and ten_k_text.strip():
+                post_ipo_10k = ten_k_text.strip()
+                sec_filings = [
+                    *sec_filings,
+                    SecFiling(
+                        url="https://www.sec.gov/edgar/post-ipo-10k",
+                        text=post_ipo_10k,
+                        filing_type="10-K",
+                    ),
+                ]
+
         return HarvesterOutput(
             company_name=payload.company_name,
             complexity_tier=payload.complexity_tier,
@@ -199,4 +245,6 @@ class DataHarvester:
             sources_active=sources_active,
             sources_failed=sources_failed,
             harvested_at=datetime.now(timezone.utc),
+            ipo_price_history=_ipo_history_json_safe(payload.ipo_price_history),
+            post_ipo_10k=post_ipo_10k,
         )

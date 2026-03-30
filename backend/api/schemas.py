@@ -2,10 +2,7 @@ from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel, Field
 from backend.models.analysis import AnalysisComplexityTier, AnalysisStatus
-from backend.models.harvester_output import HarvesterOutput
-from backend.models.parser_output import ParserOutput
-from backend.models.scenario_output import ScenarioOutput
-from backend.models.investor_brief import InvestorBrief
+from backend.models.single_agent_result import SingleAgentResult
 
 
 class CreateAnalysisRequest(BaseModel):
@@ -27,7 +24,4 @@ class AnalysisOutputsResponse(BaseModel):
     complexity_tier: AnalysisComplexityTier
     last_completed_agent: str | None = None
     created_at: datetime
-    harvester_output: HarvesterOutput | None = None
-    parser_output: ParserOutput | None = None
-    scenario_output: ScenarioOutput | None = None
-    investor_brief: InvestorBrief | None = None
+    analysis_result: SingleAgentResult | None = None

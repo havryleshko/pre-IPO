@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, datetime, timedelta, timezone
 import importlib
 from statistics import median
 from typing import Any
@@ -10,6 +11,60 @@ _MAX_PEERS = 8
 
 async def fetch_yahoo_finance(company_name: str) -> YahooFinanceData:
     return await asyncio.to_thread(_fetch_sync, company_name)
+
+
+async def fetch_ipo_price_history(ticker: str, ipo_date: date) -> dict[str, Any]:
+    return await asyncio.to_thread(_fetch_ipo_price_history_sync, ticker, ipo_date)
+
+
+async def resolve_ipo_date_for_ticker(ticker: str) -> date | None:
+    return await asyncio.to_thread(_resolve_ipo_date_for_ticker_sync, ticker)
+
+
+def _resolve_ipo_date_for_ticker_sync(ticker: str) -> date | None:
+    normalized = ticker.strip().upper()
+    if not normalized:
+        return None
+    try:
+        yf = importlib.import_module("yfinance")
+    except ImportError:
+        return None
+    info = _safe_info(yf, normalized)
+    ipo_raw = info.get("ipoDate")
+    if isinstance(ipo_raw, str) and ipo_raw.strip():
+        try:
+            return date.fromisoformat(ipo_raw.strip()[:10])
+        except ValueError:
+            pass
+    if isinstance(ipo_raw, (int, float)):
+        try:
+            return datetime.fromtimestamp(int(ipo_raw), tz=timezone.utc).date()
+        except (ValueError, OSError):
+            pass
+    epoch = info.get("firstTradeDateEpochUtc")
+    if isinstance(epoch, (int, float)):
+        try:
+            return datetime.fromtimestamp(int(epoch), tz=timezone.utc).date()
+        except (ValueError, OSError):
+            pass
+    try:
+        history = yf.Ticker(normalized).history(period="max")
+    except Exception:
+        return None
+    if history is None or getattr(history, "empty", True):
+        return None
+    first_idx = history.index[0]
+    try:
+        if isinstance(first_idx, datetime):
+            return first_idx.date()
+        to_py = getattr(first_idx, "to_pydatetime", None)
+        if callable(to_py):
+            dt = to_py()
+            if isinstance(dt, datetime):
+                return dt.date()
+    except Exception:
+        return None
+    return None
 
 
 def _fetch_sync(company_name: str) -> YahooFinanceData:
@@ -37,6 +92,52 @@ def _fetch_sync(company_name: str) -> YahooFinanceData:
         sector_multiples=sector_multiples,
         sector_90d_performance=sector_performance,
     )
+
+
+def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]:
+    lock_up_cliff_date = ipo_date + timedelta(days=180)
+    empty_result = {
+        "ipo_price": None,
+        "current_price": None,
+        "peak_price": None,
+        "trough_price": None,
+        "performance_since_ipo_pct": None,
+        "lock_up_cliff_date": lock_up_cliff_date,
+        "price_at_lock_up_cliff": None,
+    }
+
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_ticker:
+        return empty_result
+
+    try:
+        yf = importlib.import_module("yfinance")
+    except ImportError:
+        return empty_result
+
+    try:
+        history = yf.Ticker(normalized_ticker).history(start=ipo_date.isoformat())
+    except Exception:
+        return empty_result
+
+    close_points = _extract_close_points(history)
+    if not close_points:
+        return empty_result
+
+    prices = [price for _, price in close_points]
+    ipo_price = prices[0]
+    current_price = prices[-1]
+    price_at_lock_up_cliff = _first_price_on_or_after(close_points, lock_up_cliff_date)
+
+    return {
+        "ipo_price": round(ipo_price, 4),
+        "current_price": round(current_price, 4),
+        "peak_price": round(max(prices), 4),
+        "trough_price": round(min(prices), 4),
+        "performance_since_ipo_pct": _calculate_performance_pct(ipo_price, current_price),
+        "lock_up_cliff_date": lock_up_cliff_date,
+        "price_at_lock_up_cliff": round(price_at_lock_up_cliff, 4) if price_at_lock_up_cliff is not None else None,
+    }
 
 
 def _resolve_symbol(yf: Any, company_name: str) -> str:
@@ -176,6 +277,72 @@ def _ticker_90d_performance(yf: Any, ticker: str) -> float | None:
         last = float(close.iloc[-1])
     except Exception:
         return None
+    if first <= 0:
+        return None
+    return round(((last - first) / first) * 100.0, 4)
+
+
+def _extract_close_points(history: Any) -> list[tuple[date, float]]:
+    try:
+        close = history["Close"].dropna()
+    except Exception:
+        return []
+
+    items = getattr(close, "items", None)
+    if not callable(items):
+        return []
+
+    points: list[tuple[date, float]] = []
+    for raw_index, raw_value in items():
+        point_date = _coerce_history_date(raw_index)
+        point_value = _to_float(raw_value)
+        if point_date is None or point_value is None:
+            continue
+        points.append((point_date, point_value))
+    points.sort(key=lambda item: item[0])
+    return points
+
+
+def _coerce_history_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    to_pydatetime = getattr(value, "to_pydatetime", None)
+    if callable(to_pydatetime):
+        converted = to_pydatetime()
+        if isinstance(converted, datetime):
+            return converted.date()
+        if isinstance(converted, date):
+            return converted
+    as_date = getattr(value, "date", None)
+    if callable(as_date):
+        converted = as_date()
+        if isinstance(converted, date):
+            return converted
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text)
+        except ValueError:
+            try:
+                normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+                return datetime.fromisoformat(normalized).date()
+            except ValueError:
+                return None
+    return None
+
+
+def _first_price_on_or_after(points: list[tuple[date, float]], threshold: date) -> float | None:
+    for point_date, point_value in points:
+        if point_date >= threshold:
+            return point_value
+    return None
+
+
+def _calculate_performance_pct(first: float, last: float) -> float | None:
     if first <= 0:
         return None
     return round(((last - first) / first) * 100.0, 4)

@@ -10,12 +10,13 @@ dependencies = [
     "asyncpg",
     "fastapi",
     "uvicorn[standard]",
-    "langgraph",
+    "anthropic",
     "pydantic",
     "pydantic-settings",
     "yfinance",
     "httpx",
-    "reportlab",
+    "textual",
+    "websockets",
 ]
 
 [project.optional-dependencies]
@@ -26,4 +27,4 @@ test = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["backend*"]
+include = ["backend*", "tui*"]

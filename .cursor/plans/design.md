@@ -1,37 +1,43 @@
 # IPO Intelligence — Architecture Document
 **Save to:** `.cursor/plans/architecture.md`
-**Version:** 2.2 — Retail investor output contract (plain-language, action-first)
+**Version:** 3.0 — Retrospective IPO Analyser: did the IPO deliver?
 
 ---
 
 ## North Star
 
-**The exact pain:** financial advisors etc. need to research each company pre-IPO a lot and it’s hard to gather all the info manually real-time + retail investors do not know where to invest for IPO gains
+**The exact pain:** Retail investors and advisors have no easy way to evaluate whether a recent IPO (last 24 months) delivered on its S-1 promises — or whether today’s price is an entry opportunity or a value trap.
 
-**Who feels it:** Independent Financial Advisors (IFAs) and RIAs, investors
+**Who feels it:** Investors who missed an IPO and are considering buying now; advisors reviewing recently-public companies; anyone who wants to learn from IPO patterns.
 
-**What success looks like:** pre-IPO research system that does most accurate and precise analysis (Positive, Pessimistic, Realistic), identifies public funds likely to benefit from pre-IPO exposure, and provides post-IPO positioning guidance
+**What success looks like:** A multi-agent system that takes a recently-IPO’d company name (2023–2025), fetches its S-1 + post-IPO 10-K/10-Qs + live price history, compares promises vs reality, and produces a clear verdict: **Delivered / Underdelivered / Mixed** — with explicit current positioning guidance (buy / hold / avoid) based on today’s price vs IPO price vs fundamentals.
 
-### Retail Investor Readability Contract (In Scope)
+**Why retrospective beats predictive:**
+- S-1 + 10-K data is free, structured, and rich on SEC EDGAR
+- Price history is free on yfinance
+- The question "did this IPO deliver?" is answerable with evidence — not speculation
+- Patterns emerge across IPOs: insider-selling flags, lock-up cliff signals, burn rate accuracy
+- Output is verifiable — making the multi-agent pipeline auditable and impressive as a portfolio piece
 
-Investor-facing output must be simple, actionable, and readable without technical background.
+### Investor Readability Contract (In Scope)
+
+Output must be simple, actionable, and readable without financial background.
 
 Required response shape:
-1. One-sentence verdict (buy/watch/avoid) in plain language
-2. "What I see now" (price, move, timestamp, market cap when available)
-3. "Why that matters" (2-3 short bullets)
-4. "The good" / "The risk" (company-specific, not generic)
-5. "Simple conclusion" (one sentence)
-6. "Key data points used" (5-8 concise numeric bullets)
-7. "Short action ideas" (exactly 3 simple options):
-   - Conservative
-   - Tactical
-   - Risk control (explicit invalidator/stop rule)
+1. **One-sentence verdict**: Delivered / Underdelivered / Mixed — with current positioning (buy / hold / avoid)
+2. **"S-1 promised vs reality"** (3-4 bullets comparing S-1 projections to first 10-K actuals)
+3. **"Where we stand today"** (current price vs IPO price vs 52-week range, market cap)
+4. **"What the data shows"** (5-8 key metrics — revenue vs guidance, burn, insider selling %, lock-up cliff date/price impact)
+5. **"IPO patterns flagged"** (signals visible at IPO time that predicted outcome — the "you could have known" section)
+6. **"Current positioning"** (exactly 3 options):
+   - Entry case (if applicable): price level + trigger condition
+   - Hold case: what must stay true
+   - Exit / avoid case: explicit invalidator
 
-If core evidence is missing, system must switch to a low-data fallback:
-- Explicitly label output as preliminary/watch-only
-- Avoid pseudo-precision and avoid buy language
-- State what evidence is missing and what event unlocks a stronger call
+If post-IPO 10-K is not yet available (company IPO’d < 12 months ago), system switches to preliminary mode:
+- Label output as S-1-only / forward-looking
+- No "reality vs promise" section — replace with scenario projections from S-1 data
+- State when the next 10-K filing is expected
 
 ---
 
@@ -94,6 +100,8 @@ Harv  Prosp  Build  Synth
 ```json
 {
   "company_name": "string (required)",
+  "ipo_date": "ISO8601 date (optional — system resolves from EDGAR if not provided)",
+  "ticker": "string (optional — system resolves from EDGAR if not provided)"
 }
 ```
 
@@ -115,11 +123,11 @@ Agent writes nothing at all to the DB → crash, apply the null output contract
 
 | Source | What It Returns | Format | Auth | Rate Limit | Fetch Strategy |
 |---|---|---|---|---|---|
-| SEC EDGAR | S-1 filing text, filing index | Step 1: JSON (efts.sec.gov) → Step 2: raw HTML/XML | None | None (be courteous, max 10 req/sec) | Search API returns filing URL → fetch document → parse with BeautifulSoup |
+| SEC EDGAR | S-1 filing, post-IPO 10-K/10-Q filings, filing index | Step 1: JSON (efts.sec.gov) → Step 2: raw HTML/XML | None | None (be courteous, max 10 req/sec) | Search API returns filing URL → fetch document → parse with BeautifulSoup. Fetch S-1 AND first 10-K/10-Q after IPO date. |
 | RSS Feeds | Recent news articles | XML (feedparser parses to dict) | None | None | Pull on each analysis, filter last 30 days |
 | NewsAPI | Article headlines + snippets | JSON — **snippets only on free tier, not full body** | API key | 100 req/day (free developer tier) | Use for discovery — fetch full article via URL if needed |
 | Crunchbase | Funding rounds, investors, valuations | JSON | API key | **200 req/month (free tier)** — use sparingly | One lookup per company per analysis, cache result |
-| Yahoo Finance (yfinance) | Comparable company P/E, sector multiples | Python objects (no direct API call) | None | Soft limit — avoid hammering | Fetch comps list once, batch ticker lookups |
+| Yahoo Finance (yfinance) | Post-IPO price history, current price vs IPO price, 52-week range, sector multiples, analyst consensus | Python objects (no direct API call) | None | Soft limit — avoid hammering | Fetch full price history since IPO date, compute performance metrics vs IPO price. Also fetch comparable company multiples. |
 | FRED API | Fed funds rate, macro indicators | JSON | API key | 120 req/min | Fetch once per analysis, cache for 24 hours |
 | X/Twitter API v2 | Posts from verified accounts | JSON | Bearer token | **500k tweets/month, 1 app (free tier)** | Search by company name + ticker, filter verified accounts, last 90 days |
 
@@ -145,25 +153,28 @@ Before spawning any agents, the Lead Orchestrator classifies query complexity.
 
 ### Complexity Classifier
 
-**Simple IPO** (small company, limited public data, pre-S-1):
-- 3 data sources (SEC EDGAR, NewsAPI, Crunchbase)
+**Simple IPO** (small company, limited post-IPO data, only S-1 + partial 10-K):
+- 3 data sources (SEC EDGAR, yfinance price history, NewsAPI)
 - 3-5 tool calls per source
 - Target: 60 seconds
+- Example: Rubrik (RBRK)
 
-**Standard IPO** (mid-size, S-1 filed, moderate coverage):
-- 5 data sources (add Yahoo Finance + FRED)
+**Standard IPO** (mid-size, S-1 + first 10-K available, moderate coverage):
+- 5 data sources (add Crunchbase + FRED macro context)
 - 5-10 tool calls per source
 - Target: 90 seconds
+- Example: Reddit (RDDT), Instacart (CART)
 
-**Complex IPO** (SpaceX-tier: massive filing, all sources, high public interest):
-- All 7 data sources
+**Complex IPO** (high-profile, S-1 + multiple 10-Ks, all sources, heavy analyst coverage):
+- All 7 data sources (add RSS + Twitter for analyst and executive commentary)
 - 10-15 tool calls per source
 - Extended thinking enabled on Lead Agent
 - Interleaved thinking on all subagents
 - Target: 3-5 minutes
+- Example: Arm Holdings (ARM)
 
 **Prompt rule embedded in Lead Agent:**
-> "Before spawning subagents, assess query complexity. Simple: 3 sources, 3-5 tool calls each. Standard: 5 sources, 5-10 tool calls each. Complex: all 7 sources, 10-15 tool calls each. Never over-invest in simple queries."
+> "Before spawning subagents, assess query complexity based on how many post-IPO filings exist and analyst coverage depth. Simple: 3 sources, 3-5 tool calls each. Standard: 5 sources, 5-10 tool calls each. Complex: all 7 sources, 10-15 tool calls each. Never over-invest in simple queries."
 
 ---
 
@@ -355,28 +366,33 @@ After each tool result, subagent uses interleaved thinking to evaluate quality, 
 
 ### Agent 3: Scenario Builder (Subagent)
 
-**Single responsibility:** Build 3 scenarios with probability weightings across 3 time horizons.
+**Single responsibility:** Compare S-1 projections vs post-IPO actuals, score IPO delivery, and build forward scenarios from today’s price.
 
 **Principle 7 — Interleaved thinking:**
-After applying each rule, uses interleaved thinking to evaluate whether the weighting shift is defensible against source data.
+After applying each comparison rule, uses interleaved thinking to evaluate whether the delivery verdict is defensible against source data.
 
 **Input:** Reads `parser_output` + `harvester_output` from PostgreSQL via `analysis_id`
 
-**Method:** Rules-based foundation + LLM qualitative adjustment (max ±15%)
+**Method:** Rules-based S-1 vs 10-K comparison + price performance scoring + LLM qualitative adjustment (max ±15%)
 
-**Rules engine:**
-- High burn rate + no revenue → pessimistic +10%
-- Insider selling >30% → pessimistic +10%
-- Lock-up expiry <90 days → pessimistic +5%
-- Strong anchor investors → optimistic +10%
-- Hot sector (trailing 90d positive) → optimistic +10%
-- Low public float (<20%) → optimistic +5% short term
-- Primary offering only → optimistic +5%
-- High institutional interest → optimistic +10%
+**IPO delivery rules engine:**
+- Revenue within 10% of S-1 guidance → delivered +15%
+- Revenue >20% below S-1 guidance → underdelivered +20%
+- Current price > IPO price by >20% → delivered signal +10%
+- Current price < IPO price → underdelivered signal +15%
+- Lock-up cliff caused >15% drop → flag as predictable signal
+- Insider selling >30% at IPO → pessimistic signal (was flaggable pre-IPO)
+- Burn rate worse than S-1 projection → underdelivered +10%
+- First 10-K shows new risk factors not in S-1 → flag as disclosure concern
+
+**Forward scenarios (from today’s price):**
+- Pessimistic: headwinds continue, price target 12-month
+- Realistic: mean-reversion to fundamentals, price target 12-month
+- Optimistic: re-rating on execution, price target 12-month
 
 **LLM adjustment:** Max ±15% per scenario. Every adjustment must cite a specific source.
 
-**Constraint:** All 3 weightings must sum to exactly 100%.
+**Constraint:** All 3 forward scenario weightings must sum to exactly 100%.
 
 **Output written directly to PostgreSQL** (`analyses.scenario_output`). Returns `analysis_id` only.
 
@@ -384,28 +400,41 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 {
   "company_name": "string",
   "complexity_tier": "simple | standard | complex",
+  "ipo_delivery_verdict": "delivered | underdelivered | mixed",
+  "delivery_score": "number (0-100)",
+  "delivery_evidence": [
+    {"claim": "string (from S-1)", "actual": "string (from 10-K or price data)", "verdict": "met | missed | exceeded"}
+  ],
+  "price_performance": {
+    "ipo_price": "number",
+    "current_price": "number",
+    "peak_price": "number",
+    "trough_price": "number",
+    "performance_since_ipo_pct": "number",
+    "lock_up_cliff_drop_pct": "number | null"
+  },
+  "patterns_flagged": [
+    {"signal": "string", "was_visible_at_ipo": "boolean", "outcome": "string"}
+  ],
   "scenarios": {
     "pessimistic": {
       "probability": "number",
       "drivers": ["array with source citations"],
-      "key_risks": ["array with source citations"],
-      "price_targets": {"30_days": "number", "90_days": "number", "1_year": "number"},
+      "price_target_12m": "number",
       "weighting_rationale": "string citing specific data points and sources",
       "rules_applied": ["array of rule names triggered"]
     },
     "realistic": {
       "probability": "number",
       "drivers": ["array with source citations"],
-      "key_risks": ["array with source citations"],
-      "price_targets": {"30_days": "number", "90_days": "number", "1_year": "number"},
+      "price_target_12m": "number",
       "weighting_rationale": "string citing specific data points and sources",
       "rules_applied": ["array of rule names triggered"]
     },
     "optimistic": {
       "probability": "number",
       "drivers": ["array with source citations"],
-      "key_risks": ["array with source citations"],
-      "price_targets": {"30_days": "number", "90_days": "number", "1_year": "number"},
+      "price_target_12m": "number",
       "weighting_rationale": "string citing specific data points and sources",
       "rules_applied": ["array of rule names triggered"]
     }
@@ -426,7 +455,7 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 
 ### Agent 4: Investor Brief Synthesizer (Subagent)
 
-**Single responsibility:** Translate scenarios, parsed data, and harvested info into a single, retail-readable investor brief. 
+**Single responsibility:** Translate the IPO delivery verdict, S-1 vs 10-K comparison, price performance, and forward scenarios into a single, retail-readable retrospective brief.
 
 **Input:** Reads `harvester_output`, `parser_output`, and `scenario_output` from PostgreSQL via `analysis_id`.
 
@@ -435,6 +464,11 @@ After applying each rule, uses interleaved thinking to evaluate whether the weig
 ```json
 {
   "company_name": "string",
+  "ipo_verdict": "delivered | underdelivered | mixed",
+  "current_positioning": "buy | hold | avoid",
+  "ipo_price": "number",
+  "current_price": "number",
+  "performance_since_ipo_pct": "number",
   "sector_theme": "string (short)",
   "primary_instrument": {
     "name": "string",
@@ -478,6 +512,8 @@ CREATE TABLE analyses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   custom_name VARCHAR(255),
   company_name VARCHAR(255) NOT NULL,
+  ticker VARCHAR(20),
+  ipo_date DATE,
   complexity_tier VARCHAR(20) DEFAULT 'standard',
   status VARCHAR(50) DEFAULT 'pending',
   last_completed_agent VARCHAR(100),
@@ -614,29 +650,34 @@ Data persists via Docker volume. Pipeline resumes from `last_completed_agent` on
 
 ## ✅ Tests — Write Before Any Code
 
+**Test fixtures use real 2023–2025 IPOs with verifiable public data:**
+- **Arm Holdings (ARM)** — Sep 2023, complex tier: $65 IPO price, rich S-1, first 10-K available
+- **Reddit (RDDT)** — Mar 2024, standard tier: $34 IPO price, insider selling flaggable at IPO
+- **Instacart (CART)** — Sep 2023, standard tier: $30 IPO price, significant post-IPO price decline
+- **Rubrik (RBRK)** — Apr 2024, simple tier: $32 IPO price, first IPO for comparison baseline
+
 ### True Positive Tests:
-1. SpaceX — parser extracts revenue correctly from S-1
-2. SpaceX — high insider selling → pessimistic weighting increases
-3. SpaceX — anchor investor present → optimistic weighting increases
-4. SpaceX — probability weightings sum to 100%
-5. SpaceX — all 3 time horizons present
-6. SpaceX — positioning recommendation present for all 3 scenarios
-7. SpaceX — risk warning in all 3 recommendations
-8. SpaceX — client paragraph between 300-400 words
-9. SpaceX — plain-English summary free of legal jargon
-10. SpaceX — Judge Agent passes without flags
-11. SpaceX — all 7 sources fetched in parallel (verify via agent_runs timestamps)
-12. SpaceX — Lead Orchestrator saves plan to checkpoints before spawning
-13. SpaceX — classified as "complex", all 7 sources activated
-14. SpaceX — each agent writes to PostgreSQL, passes analysis_id only
+1. Arm Holdings — parser extracts revenue correctly from S-1 (ARM had $2.68B revenue in filing)
+2. Reddit — high insider selling → pessimistic signal flagged
+3. Arm Holdings — anchor investor (SoftBank retention) present → optimistic signal raised
+4. Arm Holdings — probability weightings sum to 100% across forward scenarios
+5. All test companies — all 3 forward price targets present
+6. All test companies — delivery verdict present (delivered / underdelivered / mixed)
+7. All test companies — "IPO patterns flagged" section present with at least 1 pattern
+8. All test companies — brief between 300-400 words
+9. All test companies — plain-English summary free of legal jargon
+10. Arm Holdings — Judge Agent passes without flags (strong data quality)
+11. All test companies — S-1 + 10-K both fetched in parallel (verify via agent_runs timestamps)
+12. All test companies — Lead Orchestrator saves plan to checkpoints before spawning
+13. Arm Holdings — classified as "complex", all 7 sources activated
+14. All test companies — each agent writes to PostgreSQL, passes analysis_id only
 
 ### True Negative Tests:
-15. Clean IPO — no insider selling → pessimistic stays baseline
-16. Clean IPO — primary offering only → no secondary selling flag
-17. Clean IPO — strong institutional interest → optimistic increases
-18. Clean IPO — Judge passes with no flags
-19. Clean IPO — export unlocked without IFA confirmation
-20. Simple IPO — classified as "simple", only 3 sources activated
+15. Rubrik — primary offering only → no secondary selling flag
+16. Arm Holdings — strong institutional interest → optimistic signal raised
+17. Reddit — Judge passes with delivery verdict present
+18. Instacart — export unlocked after Judge approval
+19. Rubrik — classified as "simple", only 3 sources activated
 
 ### Failure Mode Tests:
 21. SEC EDGAR down → flags, continues with available data
@@ -652,7 +693,7 @@ Data persists via Docker volume. Pipeline resumes from `last_completed_agent` on
 29. Agent retry fails → amber flag with source reference, export locked
 
 ### Edge Case Tests:
-30. No S-1 filed yet → all sections flagged as preliminary
+30. Company IPO’d < 12 months ago, no 10-K yet → S-1-only mode, no S-1 vs reality comparison, forward scenarios only
 31. Company name typo → clear error, prompts correction
 32. Judge detects consistent failure → improvement logged to agent_improvements
 33. IFA confirms all flags → export unlocks

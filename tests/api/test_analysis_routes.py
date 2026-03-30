@@ -99,6 +99,7 @@ def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:
         "parser_output": None,
         "scenario_output": None,
         "investor_brief": None,
+        "recommendation_output": None,
     }
     with patch(
         "backend.api.routes_analysis.get_analysis_by_id",

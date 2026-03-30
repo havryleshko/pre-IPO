@@ -1,4 +1,3 @@
-import importlib
 from typing import Awaitable, Callable
 from typing import Any, TypedDict
 
@@ -16,10 +15,7 @@ from backend.services.retry_service import retry_agent_once_on_null_output
 AgentExecutor = Callable[[str], Awaitable[object]]
 
 _PIPELINE_ORDER: tuple[str, ...] = (
-    "data_harvester",
-    "prospectus_parser",
-    "scenario_builder",
-    "investor_brief_synthesizer",
+    "single_agent",
 )
 
 
@@ -61,19 +57,20 @@ async def resume_from_last_completed_agent(
     )
 
     executed_tracker: list[str] = []
-    graph = _build_resume_graph(
-        agents_to_run=agents_to_run,
-        executors=executors,
-        executed_tracker=executed_tracker,
-    )
+    executed_agents: list[str] = []
     try:
-        final_state = await graph.ainvoke(
-            {
-                "analysis_id": payload.analysis_id,
-                "executed_agents": [],
-            }
-        )
-        executed = final_state.get("executed_agents", [])
+        for agent_name in agents_to_run:
+            await retry_agent_once_on_null_output(
+                analysis_id=payload.analysis_id,
+                agent_name=agent_name,
+                executor=executors[agent_name],
+            )
+            await mark_agent_completed(
+                analysis_id=payload.analysis_id,
+                agent_name=agent_name,
+            )
+            executed_agents.append(agent_name)
+            executed_tracker.append(agent_name)
     except Exception:
         await set_analysis_failed(
             analysis_id=payload.analysis_id,
@@ -81,7 +78,7 @@ async def resume_from_last_completed_agent(
         )
         raise
 
-    final_last_completed = executed[-1] if executed else last_completed
+    final_last_completed = executed_agents[-1] if executed_agents else last_completed
     await set_analysis_completed(
         analysis_id=payload.analysis_id,
         last_completed_agent=final_last_completed,
@@ -89,7 +86,7 @@ async def resume_from_last_completed_agent(
     return ResumeServiceResult(
         analysis_id=payload.analysis_id,
         resumed_from=last_completed,
-        executed_agents=executed,
+        executed_agents=executed_agents,
         completed=True,
     )
 
@@ -112,47 +109,3 @@ def _next_agent_index(last_completed_agent: str | None) -> int:
         raise RuntimeError(f"Unknown last_completed_agent value: {last_completed_agent}") from None
 
 
-def _build_resume_graph(
-    agents_to_run: list[str],
-    executors: dict[str, AgentExecutor],
-    executed_tracker: list[str],
-) -> Any:
-    state_graph_cls, start_node, end_node = _load_langgraph_graph_components()
-    graph_builder = state_graph_cls(_ResumeState)
-    previous_node: str = start_node
-
-    for agent_name in agents_to_run:
-        node_name = f"run_{agent_name}"
-
-        async def _run_agent(state: _ResumeState, current_agent: str = agent_name) -> _ResumeState:
-            await retry_agent_once_on_null_output(
-                analysis_id=state["analysis_id"],
-                agent_name=current_agent,
-                executor=executors[current_agent],
-            )
-            await mark_agent_completed(
-                analysis_id=state["analysis_id"],
-                agent_name=current_agent,
-            )
-            executed_agents = [*state["executed_agents"], current_agent]
-            executed_tracker.clear()
-            executed_tracker.extend(executed_agents)
-            return {
-                "analysis_id": state["analysis_id"],
-                "executed_agents": executed_agents,
-            }
-
-        graph_builder.add_node(node_name, _run_agent)
-        graph_builder.add_edge(previous_node, node_name)
-        previous_node = node_name
-
-    graph_builder.add_edge(previous_node, end_node)
-    return graph_builder.compile()
-
-
-def _load_langgraph_graph_components() -> tuple[Any, str, str]:
-    module = importlib.import_module("langgraph.graph")
-    state_graph_cls = getattr(module, "StateGraph")
-    start_node = getattr(module, "START")
-    end_node = getattr(module, "END")
-    return state_graph_cls, start_node, end_node

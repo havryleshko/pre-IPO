@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, datetime
 import json
 import logging
 from html.parser import HTMLParser
@@ -17,6 +18,7 @@ _SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 _SEC_BASE_URL = "https://www.sec.gov"
 _ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _SUPPORTED_FORMS = ("S-1", "S-1/A", "F-1", "424B4")
+_POST_IPO_FORMS = ("10-K", "10-K/A", "10-Q", "10-Q/A")
 _ISSUER_SUFFIX_STOPWORDS: frozenset[str] = frozenset(
     {
         "inc",
@@ -164,6 +166,81 @@ async def fetch_sec_edgar(company_name: str, max_filings: int = 3) -> list[SecFi
     return filings
 
 
+async def fetch_post_ipo_filings(ticker: str, ipo_date: date) -> str | None:
+    return await asyncio.to_thread(_fetch_post_ipo_filings_sync, ticker, ipo_date)
+
+
+async def resolve_ticker_from_name(company_name: str) -> str:
+    return await asyncio.to_thread(_resolve_ticker_from_name_sync, company_name)
+
+
+def _fetch_post_ipo_filings_sync(ticker: str, ipo_date: date) -> str | None:
+    cik = _lookup_cik_from_ticker(ticker)
+    if cik is None:
+        return None
+
+    filing_sources: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for filing_type in ("10-K", "10-Q"):
+        feed_root = _fetch_feed(
+            _build_browse_url(
+                CIK=cik,
+                type=filing_type,
+                owner="exclude",
+                count=40,
+                output="atom",
+                action="getcompany",
+            )
+        )
+        for source in _extract_post_ipo_filing_sources(feed_root, ipo_date):
+            filing_url = source.get("filing_url")
+            if not filing_url or filing_url in seen_urls:
+                continue
+            seen_urls.add(filing_url)
+            filing_sources.append(source)
+
+    filing_sources.sort(key=lambda item: (item.get("filing_date") or "", item.get("filing_type") or ""))
+    for source in filing_sources:
+        filing_type = str(source.get("filing_type") or "")
+        if not filing_type.upper().startswith("10-K"):
+            continue
+        filing_url = source.get("filing_url")
+        if not filing_url:
+            continue
+        _, raw_text = _get_primary_filing_text(filing_url, filing_type)
+        parsed_text = _normalize_text(raw_text)
+        if parsed_text:
+            return parsed_text
+    return None
+
+
+def _resolve_ticker_from_name_sync(company_name: str) -> str:
+    ticker_data = _fetch_json(_SEC_TICKERS_URL)
+    normalized_query = _normalize_name(company_name)
+    candidates = _extract_ticker_company_records(ticker_data)
+    if not candidates:
+        raise RuntimeError(f"SEC ticker lookup failed for {company_name!r}")
+
+    ranked = sorted(
+        candidates,
+        key=lambda item: _company_match_score(normalized_query, _normalize_name(item["name"])),
+        reverse=True,
+    )
+    best = ranked[0]
+    if _company_match_score(normalized_query, _normalize_name(best["name"])) == (0, 0, 0):
+        raise RuntimeError(f"No SEC ticker match found for {company_name!r}")
+
+    issuer_name = _resolve_conformed_issuer_name(best["cik"])
+    if issuer_name:
+        matches, score, requested_norm, issuer_norm = _issuer_name_match(company_name, issuer_name)
+        if not matches:
+            raise RuntimeError(
+                "SEC issuer mismatch requested=%r issuer=%r requested_norm=%r issuer_norm=%r score=%.3f"
+                % (company_name, issuer_name, requested_norm, issuer_norm, score)
+            )
+    return best["ticker"]
+
+
 def _lookup_company_cik(company_name: str) -> str | None:
     ticker_match = _lookup_company_cik_from_tickers(company_name)
     if ticker_match is not None:
@@ -196,16 +273,7 @@ def _lookup_company_cik(company_name: str) -> str | None:
 def _lookup_company_cik_from_tickers(company_name: str) -> str | None:
     ticker_data = _fetch_json(_SEC_TICKERS_URL)
     normalized_query = _normalize_name(company_name)
-    candidates: list[dict[str, str]] = []
-    for item in ticker_data.values():
-        if not isinstance(item, dict):
-            continue
-        title = str(item.get("title") or "").strip()
-        cik_value = item.get("cik_str")
-        if not title or cik_value is None:
-            continue
-        candidates.append({"name": title, "cik": str(cik_value).zfill(10)})
-
+    candidates = _extract_ticker_company_records(ticker_data)
     if not candidates:
         return None
 
@@ -218,6 +286,37 @@ def _lookup_company_cik_from_tickers(company_name: str) -> str | None:
     if _company_match_score(normalized_query, _normalize_name(best["name"])) == (0, 0, 0):
         return None
     return best["cik"]
+
+
+def _lookup_cik_from_ticker(ticker: str) -> str | None:
+    normalized_ticker = ticker.strip().upper()
+    if not normalized_ticker:
+        return None
+    ticker_data = _fetch_json(_SEC_TICKERS_URL)
+    for item in _extract_ticker_company_records(ticker_data):
+        if item["ticker"] == normalized_ticker:
+            return item["cik"]
+    return None
+
+
+def _extract_ticker_company_records(ticker_data: dict[str, Any]) -> list[dict[str, str]]:
+    candidates: list[dict[str, str]] = []
+    for item in ticker_data.values():
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        ticker = str(item.get("ticker") or "").strip().upper()
+        cik_value = item.get("cik_str")
+        if not title or not ticker or cik_value is None:
+            continue
+        candidates.append(
+            {
+                "name": title,
+                "ticker": ticker,
+                "cik": str(cik_value).zfill(10),
+            }
+        )
+    return candidates
 
 
 def _fetch_feed(url: str) -> ElementTree.Element:
@@ -359,6 +458,30 @@ def _extract_filing_sources(root: ElementTree.Element) -> list[dict[str, str]]:
     return filings
 
 
+def _extract_post_ipo_filing_sources(root: ElementTree.Element, ipo_date: date) -> list[dict[str, str]]:
+    filings: list[dict[str, str]] = []
+    for entry in root.findall("atom:entry", _ATOM_NS):
+        content = entry.find("atom:content", _ATOM_NS)
+        if content is None:
+            continue
+        filing_type = str(_child_text(content, "filing-type") or "").upper()
+        filing_url = _child_text(content, "filing-href")
+        filing_date = _parse_filing_date(_child_text(content, "filing-date") or _child_text(entry, "updated"))
+        if filing_type not in _POST_IPO_FORMS or not filing_url or filing_date is None:
+            continue
+        if filing_date <= ipo_date:
+            continue
+        filings.append(
+            {
+                "filing_type": filing_type,
+                "filing_url": filing_url,
+                "filing_date": filing_date.isoformat(),
+            }
+        )
+    filings.sort(key=lambda item: (item["filing_date"], item["filing_type"]))
+    return filings
+
+
 def _resolve_primary_document_url(index_url: str, filing_type: str, index_html: str) -> str:
     parser = _DocumentLinkParser()
     parser.feed(index_html)
@@ -395,6 +518,25 @@ def _child_text(node: ElementTree.Element, path: str) -> str | None:
         return None
     value = current.text.strip()
     return value or None
+
+
+def _parse_filing_date(value: str | None) -> date | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    for parser in (date.fromisoformat, _parse_datetime_to_date):
+        try:
+            return parser(text)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_datetime_to_date(value: str) -> date:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    return datetime.fromisoformat(normalized).date()
 
 
 def _company_match_score(query: str, candidate: str) -> tuple[int, int, int]:

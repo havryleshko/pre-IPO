@@ -31,10 +31,6 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -54,7 +50,10 @@ jobs:
       - name: Run migrations
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -f backend/database/migrations/001_create_core_tables.sql
+        run: |
+          for migration in backend/database/migrations/*.sql; do
+            psql -h localhost -U postgres -d ipo_test -v ON_ERROR_STOP=1 -f "$migration"
+          done
 
       - name: Verify core tables
         env:
@@ -69,15 +68,3 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipo_test
         run: pytest tests/ -v
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Typecheck frontend
-        working-directory: frontend
-        run: npm run typecheck
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build

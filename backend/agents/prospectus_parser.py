@@ -1,11 +1,12 @@
 import re
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from pydantic import BaseModel
 
 from backend.database.queries import get_analysis_by_id, save_parser_output
 from backend.models.parser_output import (
+    ActualResult,
     ComparableValuation,
     DemandSignals,
     Financials,
@@ -14,9 +15,11 @@ from backend.models.parser_output import (
     FundingHistoryItem,
     KeyPerson,
     FactualClaimEvidence,
-    RiskFactorClaimEvidence,
     ParserOutput,
+    RiskFactorClaimEvidence,
+    S1Projection,
 )
+from backend.models.scenario_output import DeliveryEvidence
 from backend.services.agent_run_logger import (
     log_agent_run_completed,
     log_agent_run_failed,
@@ -66,11 +69,242 @@ class ProspectusParser:
         )
         return ProspectusParserResult(analysis_id=payload.analysis_id)
 
+    @staticmethod
+    def _is_prospectus_filing_type(filing_type: str) -> bool:
+        u = filing_type.upper().strip()
+        return u in ("S-1", "S-1/A", "F-1", "424B4")
+
+    @staticmethod
+    def _is_10k_filing_type(filing_type: str) -> bool:
+        u = filing_type.upper().strip()
+        return u.startswith("10-K")
+
+    def _first_filing_text(
+        self,
+        filings: list[Any],
+        predicate: Callable[[str], bool],
+    ) -> str:
+        for item in filings:
+            if not isinstance(item, dict):
+                continue
+            ft = str(item.get("filing_type") or "")
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            if predicate(ft):
+                return text
+        return ""
+
+    def parse_10k_actuals(self, filing_text: str) -> list[ActualResult]:
+        if not filing_text.strip():
+            return []
+
+        results: list[ActualResult] = []
+        financial_window = self._locate_financial_statements_section(filing_text) or filing_text
+        revenue = self._extract_money_after_keywords(
+            financial_window,
+            ("revenue", "total revenue", "net revenue"),
+            min_value=1_000,
+            max_value=1e12,
+        )
+        if revenue is not None:
+            results.append(
+                ActualResult(
+                    metric="revenue",
+                    actual_value=revenue,
+                    source_filing="10-K",
+                    source_section="financial_statements",
+                )
+            )
+
+        cash_flow_source = financial_window
+        burn_rate: float | None = None
+        for keyword in (
+            "cash used in operating activities",
+            "cash used in operations",
+            "operating cash flow",
+            "burn rate",
+        ):
+            keyword_lc = keyword.lower()
+            idx = cash_flow_source.lower().find(keyword_lc)
+            if idx < 0:
+                continue
+            start = max(0, idx - 160)
+            end = min(len(cash_flow_source), idx + 320)
+            window = cash_flow_source[start:end]
+            amount = self._extract_money_after_keywords(
+                window,
+                (keyword,),
+                min_value=1_000,
+                max_value=1e11,
+            )
+            if amount is None:
+                continue
+            window_lc = window.lower()
+            if any(token in window_lc for token in ("per month", "monthly", "/month")):
+                factor = 1
+            elif any(
+                token in window_lc
+                for token in (
+                    "per year",
+                    "annual",
+                    "per annum",
+                    "for the year",
+                    "twelve months",
+                    "year ended",
+                    "for fiscal year",
+                )
+            ):
+                factor = 12
+            elif "six months" in window_lc:
+                factor = 6
+            elif "nine months" in window_lc:
+                factor = 9
+            elif "three months" in window_lc or "quarter" in window_lc:
+                factor = 3
+            else:
+                factor = 1
+            burn_rate = amount / factor
+            break
+        if burn_rate is None:
+            burn_rate = self._extract_money_after_keywords(
+                cash_flow_source,
+                (
+                    "burn rate",
+                    "cash used in operating activities",
+                    "cash used in operations",
+                    "operating cash flow",
+                ),
+                min_value=1_000,
+                max_value=1e11,
+            )
+        if burn_rate is not None:
+            results.append(
+                ActualResult(
+                    metric="burn_rate",
+                    actual_value=burn_rate,
+                    source_filing="10-K",
+                    source_section="mda",
+                )
+            )
+
+        risk_section = self._locate_10k_risk_section(filing_text) or ""
+        if risk_section:
+
+            def _is_noise(s: str) -> bool:
+                if re.search(r"table of contents", s, re.IGNORECASE):
+                    return True
+                if re.search(r"^page\s+\d", s, re.IGNORECASE):
+                    return True
+                if re.search(r"investing in our .+ involves risks", s, re.IGNORECASE):
+                    return True
+                if re.search(r"^[A-Z][A-Z\s&,\.]+$", s):
+                    return True
+                return False
+
+            risk_count = 0
+            for sentence in re.split(r"(?<=[.!?])\s+", risk_section):
+                if risk_count >= 5:
+                    break
+                cleaned = sentence.strip()
+                lower = cleaned.lower()
+                if len(cleaned) < 60:
+                    continue
+                if "risk" in lower or "uncertain" in lower or "adverse" in lower:
+                    if _is_noise(cleaned):
+                        continue
+                    if cleaned.count(" ") < 8:
+                        continue
+                    risk_count += 1
+                    results.append(
+                        ActualResult(
+                            metric=f"risk_factor_{risk_count}",
+                            actual_value=None,
+                            source_filing="10-K",
+                            source_section="risk_factors",
+                        )
+                    )
+        return results
+
+    def compare_s1_to_10k(
+        self,
+        s1_projections: list[S1Projection],
+        actuals: list[ActualResult],
+    ) -> list[DeliveryEvidence]:
+        actual_by_metric: dict[str, float | None] = {}
+        for row in actuals:
+            key = self._normalize_metric_key(row.metric)
+            if key not in actual_by_metric:
+                actual_by_metric[key] = row.actual_value
+
+        out: list[DeliveryEvidence] = []
+        for proj in s1_projections:
+            key = self._normalize_metric_key(proj.metric)
+            actual_val = actual_by_metric.get(key)
+            if proj.s1_value is None or actual_val is None:
+                continue
+            if not key.startswith("risk_factor"):
+                tol = max(1e-6, abs(proj.s1_value) * 0.001)
+                if abs(actual_val - proj.s1_value) <= tol:
+                    verdict: Literal["met", "missed", "exceeded"] = "met"
+                elif actual_val < proj.s1_value:
+                    verdict = "missed"
+                else:
+                    verdict = "exceeded"
+                claim_s = f"{proj.metric} S-1 projection: {proj.s1_value}"
+                actual_s = f"{proj.metric} 10-K actual: {actual_val}"
+                out.append(DeliveryEvidence(claim=claim_s, actual=actual_s, verdict=verdict))
+        return out
+
+    @staticmethod
+    def _normalize_metric_key(metric: str) -> str:
+        return metric.strip().lower().replace(" ", "_")
+
+    def _build_s1_projections_from_s1_text(self, s1_text: str) -> list[S1Projection]:
+        if not s1_text.strip():
+            return []
+        temp_flags: list[FlaggedSection] = []
+        fin = self._extract_financials(s1_text, temp_flags)
+        projections: list[S1Projection] = []
+        if fin.revenue is not None:
+            projections.append(
+                S1Projection(
+                    metric="revenue",
+                    s1_value=fin.revenue,
+                    s1_context="Extracted from S-1 financial statements section",
+                )
+            )
+        if fin.burn_rate_monthly is not None:
+            projections.append(
+                S1Projection(
+                    metric="burn_rate",
+                    s1_value=fin.burn_rate_monthly,
+                    s1_context="Extracted from S-1 cash flow / operating activities",
+                )
+            )
+        return projections
+
+    def _locate_10k_risk_section(self, text: str) -> str | None:
+        if not text:
+            return None
+        lowered = text.lower()
+        for needle in ("item 1a", "item 1a.", "risk factors"):
+            idx = lowered.find(needle)
+            if idx >= 0:
+                start = max(idx - 2000, 0)
+                end = min(idx + 25000, len(text))
+                chunk = text[start:end].strip()
+                if chunk:
+                    return chunk
+        return self._locate_risk_factors_section(text)
+
     def _parse_harvester_output(self, company_name: str, harvester_output: dict[str, Any]) -> ParserOutput:
         sec_filings = harvester_output.get("sec_filings")
         filings = sec_filings if isinstance(sec_filings, list) else []
         filing_texts = [str(item.get("text") or "") for item in filings if isinstance(item, dict)]
         merged_text = " ".join(text for text in filing_texts if text).strip()
+        s1_text = self._first_filing_text(filings, self._is_prospectus_filing_type)
+        ten_k_text = self._first_filing_text(filings, self._is_10k_filing_type)
         news_context = self._merge_news_context(harvester_output.get("news_articles"))
         narrative_text = merged_text or news_context
 
@@ -105,6 +339,14 @@ class ProspectusParser:
         data_confidence = self._derive_confidence(merged_text, news_context, financials, flagged_sections)
         business_model = self._extract_business_model(narrative_text)
 
+        s1_projections = self._build_s1_projections_from_s1_text(s1_text or merged_text)
+        actuals: list[ActualResult] = []
+        has_post_ipo_10k = False
+        if ten_k_text:
+            has_post_ipo_10k = True
+            actuals = self.parse_10k_actuals(ten_k_text)
+            self.compare_s1_to_10k(s1_projections, actuals)
+
         return ParserOutput(
             company_name=company_name or "unknown",
             business_model=business_model,
@@ -121,6 +363,9 @@ class ProspectusParser:
             funding_history=funding_history,
             offering_type=offering_type,
             insider_selling_percentage=insider_selling_percentage,
+            s1_projections=s1_projections,
+            actuals=actuals,
+            has_post_ipo_10k=has_post_ipo_10k,
             parsed_at=datetime.now(timezone.utc),
             data_confidence=data_confidence,
             flagged_sections=flagged_sections,

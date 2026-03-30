@@ -76,6 +76,19 @@ class FlaggedSection(BaseModel):
     verify_at: str
 
 
+class S1Projection(BaseModel):
+    metric: str
+    s1_value: float | None = None
+    s1_context: str
+
+
+class ActualResult(BaseModel):
+    metric: str
+    actual_value: float | None = None
+    source_filing: str
+    source_section: str
+
+
 class ParserOutput(BaseModel):
     company_name: str
     business_model: str
@@ -96,6 +109,9 @@ class ParserOutput(BaseModel):
     offering_type: Literal["primary", "secondary", "mixed"]
     insider_selling_percentage: float | None = None
     insider_selling_percentage_evidence: FactualClaimEvidence | None = None
+    s1_projections: list[S1Projection] = Field(default_factory=list)
+    actuals: list[ActualResult] = Field(default_factory=list)
+    has_post_ipo_10k: bool = False
     parsed_at: datetime
     data_confidence: Literal["high", "medium", "low"]
     flagged_sections: list[FlaggedSection] = Field(default_factory=list)

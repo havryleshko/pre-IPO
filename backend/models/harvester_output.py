@@ -76,3 +76,5 @@ class HarvesterOutput(BaseModel):
     sources_active: list[str] = []
     sources_failed: list[SourceFailure] = []
     harvested_at: datetime
+    ipo_price_history: dict[str, Any] | None = None
+    post_ipo_10k: str | None = None

@@ -9,7 +9,7 @@ _AGENT_OUTPUT_FIELD: dict[str, str] = {
     "data_harvester": "harvester_output",
     "prospectus_parser": "parser_output",
     "scenario_builder": "scenario_output",
-    "investor_brief_synthesizer": "investor_brief",
+    "single_agent": "final_report",
 }
 
 

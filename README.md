@@ -6,14 +6,14 @@ It is aimed at the kind of pain advisors and curious investors feel: IPO researc
 
 ## What you get
 
-- A **web UI** (React) to start an analysis and watch progress.
-- A **Python API** (FastAPI) that stores each run in **PostgreSQL** and coordinates specialized steps (parsing prospectus-style material, building scenarios, synthesizing an investor-facing brief).
+- A **Textual TUI** to start an analysis, watch progress, and view results in the terminal.
+- A **Python API** (FastAPI) that stores each run in **PostgreSQL** and runs the analysis pipeline.
 - **Resume-friendly runs**: if something fails mid-pipeline, the design favors picking up from where things stopped rather than throwing everything away.
 
 ## What it is built with
 
-- **Backend:** Python 3.12+, FastAPI, async PostgreSQL (`asyncpg`), LangGraph for orchestration.
-- **Frontend:** React, TypeScript, Vite, Tailwind.
+- **Backend:** Python 3.12+, FastAPI, async PostgreSQL (`asyncpg`).
+- **TUI:** Textual (Python).
 - **Data:** SEC EDGAR and other configurable sources (see `.env.example` for API keys you may enable).
 
 ## Running everything with Docker
@@ -25,18 +25,17 @@ docker compose up --build
 ```
 
 - API: `http://localhost:8000`
-- UI: `http://localhost:3000`
 
 The backend waits for Postgres and applies the first database migration on startup. If you add or change SQL under `backend/database/migrations/`, apply new files in order (for example with `psql`) so your database schema stays in sync.
 
 ## Running locally without Compose
 
-You need Python, Node.js, and Postgres reachable at the URL in your env.
+You need Python and Postgres reachable at the URL in your env.
 
 1. Copy `.env.example` to `.env` and adjust values (especially `DATABASE_URL` and `SEC_EDGAR_USER_AGENT`; SEC expects a descriptive user agent with contact info).
 2. Create the database and run migrations in order from `backend/database/migrations/`.
 3. Start the API: `PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port 8000`
-4. Start the UI: `cd frontend && npm install && npm run dev`
+4. Start the TUI: `python -m tui`
 
 There is a helper script `./run-local.sh` that starts Postgres in Docker and applies the first migration; you can use it as a shortcut, then run the API and frontend in separate terminals as the script prints.
 
@@ -53,7 +52,7 @@ pytest tests/ -v
 ## Project layout (short)
 
 - `backend/` — API, agents, database access, pipeline services  
-- `frontend/` — Vite + React app  
+- `tui/` — Textual terminal UI client  
 - `tests/` — pytest suite  
 - `.cursor/plans/design.md` — deeper architecture notes for contributors  
 

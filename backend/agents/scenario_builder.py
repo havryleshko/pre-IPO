@@ -1,10 +1,20 @@
-from datetime import datetime, timezone
-from typing import Any
+from datetime import date, datetime, timezone
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from backend.agents.prospectus_parser import ProspectusParser
 from backend.database.queries import get_analysis_by_id, save_scenario_output
-from backend.models.scenario_output import PriceTargets, ScenarioDetails, ScenarioOutput, ScenarioSet
+from backend.models.parser_output import ActualResult, S1Projection
+from backend.models.scenario_output import (
+    DeliveryEvidence,
+    PatternFlag,
+    PricePerformance,
+    PriceTargets,
+    ScenarioDetails,
+    ScenarioOutput,
+    ScenarioSet,
+)
 from backend.services.agent_run_logger import (
     log_agent_run_completed,
     log_agent_run_failed,
@@ -124,9 +134,28 @@ class ScenarioBuilder:
             weights["pessimistic"] -= llm_adjustment
         weights = self._normalize_weights(weights)
 
-        pessimistic_targets = self._price_targets("pessimistic", sector_performance, burn_rate, revenue, institutional_interest)
-        realistic_targets = self._price_targets("realistic", sector_performance, burn_rate, revenue, institutional_interest)
-        optimistic_targets = self._price_targets("optimistic", sector_performance, burn_rate, revenue, institutional_interest)
+        price_performance = self._price_performance_from_harvester(harvester_output)
+        baseline_price = price_performance.current_price if price_performance is not None else None
+
+        s1_rows, actual_rows = self._hydrate_s1_and_actuals(parser_output)
+        delivery_evidence: list[DeliveryEvidence] = []
+        if s1_rows and actual_rows:
+            delivery_evidence = ProspectusParser().compare_s1_to_10k(s1_rows, actual_rows)
+
+        delivery_score, ipo_delivery_verdict = self.compute_delivery_score(delivery_evidence, price_performance)
+        patterns_flagged = self.detect_ipo_patterns(
+            parser_output, price_performance, delivery_evidence=delivery_evidence
+        )
+
+        pessimistic_targets = self._price_targets(
+            "pessimistic", sector_performance, burn_rate, revenue, institutional_interest, baseline_price
+        )
+        realistic_targets = self._price_targets(
+            "realistic", sector_performance, burn_rate, revenue, institutional_interest, baseline_price
+        )
+        optimistic_targets = self._price_targets(
+            "optimistic", sector_performance, burn_rate, revenue, institutional_interest, baseline_price
+        )
 
         pessimistic_drivers = self._drivers_for_scenario("pessimistic", rules_applied, parser_output, harvester_output)
         realistic_drivers = self._drivers_for_scenario("realistic", rules_applied, parser_output, harvester_output)
@@ -169,6 +198,11 @@ class ScenarioBuilder:
             probability_sum_check=probability_sum,
             llm_adjustment_applied=llm_adjustment != 0.0,
             llm_adjustment_rationale=llm_reason if llm_adjustment != 0.0 else None,
+            ipo_delivery_verdict=ipo_delivery_verdict,
+            delivery_score=delivery_score,
+            delivery_evidence=delivery_evidence,
+            price_performance=price_performance,
+            patterns_flagged=patterns_flagged,
             built_at=datetime.now(timezone.utc),
         )
 
@@ -261,6 +295,161 @@ class ScenarioBuilder:
         rationale = ", ".join(reasons) if reasons else "no material qualitative adjustment factors"
         return adjustment, rationale
 
+    def compute_delivery_score(
+        self,
+        delivery_evidence: list[DeliveryEvidence],
+        price_performance: PricePerformance | None,
+    ) -> tuple[float, Literal["delivered", "underdelivered", "mixed"]]:
+        ev_delta = 0.0
+        for row in delivery_evidence:
+            if row.verdict == "met":
+                ev_delta += 9.0
+            elif row.verdict == "exceeded":
+                ev_delta += 11.0
+            else:
+                ev_delta -= 11.0
+        ev_delta = max(-35.0, min(35.0, ev_delta))
+        score = 50.0 + ev_delta
+
+        if price_performance is not None:
+            perf = price_performance.performance_since_ipo_pct
+            if perf is not None:
+                if perf > 15.0:
+                    score += 12.0
+                elif perf > 0.0:
+                    score += 6.0
+                elif perf < -15.0:
+                    score -= 12.0
+                elif perf < 0.0:
+                    score -= 6.0
+
+        score = max(0.0, min(100.0, round(score, 2)))
+        if score >= 65.0:
+            verdict: Literal["delivered", "underdelivered", "mixed"] = "delivered"
+        elif score <= 40.0:
+            verdict = "underdelivered"
+        else:
+            verdict = "mixed"
+        return score, verdict
+
+    def detect_ipo_patterns(
+        self,
+        parser_output: dict[str, Any],
+        price_performance: PricePerformance | None,
+        delivery_evidence: list[DeliveryEvidence] | None = None,
+    ) -> list[PatternFlag]:
+        evidence = delivery_evidence or []
+        flags: list[PatternFlag] = []
+
+        insider = self._to_float(parser_output.get("insider_selling_percentage"))
+        if insider is not None and insider >= 30.0 and price_performance is not None:
+            cliff = price_performance.price_at_lock_up_cliff
+            current = price_performance.current_price
+            if cliff is not None and current is not None and cliff > 0:
+                if current <= cliff * 0.85:
+                    flags.append(
+                        PatternFlag(
+                            signal="insider_selling_lockup_cliff_pressure",
+                            was_visible_at_ipo=True,
+                            outcome=(
+                                f"Insider selling {insider:.0f}%+ at IPO; price at cliff {cliff:.2f} vs "
+                                f"current {current:.2f} implies post-lock-up pressure."
+                            ),
+                        )
+                    )
+
+        for row in evidence:
+            claim_lower = row.claim.strip().lower()
+            if claim_lower.startswith("burn_rate") and row.verdict == "missed":
+                flags.append(
+                    PatternFlag(
+                        signal="burn_rate_forecast_inaccuracy",
+                        was_visible_at_ipo=True,
+                        outcome="S-1 burn projection materially missed vs first 10-K actuals.",
+                    )
+                )
+                break
+
+        demand = parser_output.get("demand_signals") if isinstance(parser_output.get("demand_signals"), dict) else {}
+        anchors = demand.get("anchor_investors") if isinstance(demand.get("anchor_investors"), list) else []
+        if anchors:
+            rev_ok = any(
+                r.claim.strip().lower().startswith("revenue") and r.verdict in ("met", "exceeded")
+                for r in evidence
+            )
+            if rev_ok:
+                out = "Anchor syndicate present; revenue delivery met or exceeded S-1 framing."
+            else:
+                out = "Anchor syndicate visible at IPO; monitor revenue and margin delivery vs prospectus."
+            flags.append(
+                PatternFlag(
+                    signal="anchor_investor_syndicate",
+                    was_visible_at_ipo=True,
+                    outcome=out,
+                )
+            )
+
+        return flags
+
+    def _price_performance_from_harvester(self, harvester_output: dict[str, Any]) -> PricePerformance | None:
+        raw = harvester_output.get("ipo_price_history")
+        if not isinstance(raw, dict):
+            return None
+        lock_raw = raw.get("lock_up_cliff_date")
+        lock_parsed: date | None = None
+        if isinstance(lock_raw, date):
+            lock_parsed = lock_raw
+        elif isinstance(lock_raw, datetime):
+            lock_parsed = lock_raw.date()
+        elif isinstance(lock_raw, str) and lock_raw.strip():
+            try:
+                lock_parsed = date.fromisoformat(lock_raw.strip()[:10])
+            except ValueError:
+                lock_parsed = None
+        pp = PricePerformance(
+            ipo_price=self._to_float(raw.get("ipo_price")),
+            current_price=self._to_float(raw.get("current_price")),
+            peak_price=self._to_float(raw.get("peak_price")),
+            trough_price=self._to_float(raw.get("trough_price")),
+            performance_since_ipo_pct=self._to_float(raw.get("performance_since_ipo_pct")),
+            lock_up_cliff_date=lock_parsed,
+            price_at_lock_up_cliff=self._to_float(raw.get("price_at_lock_up_cliff")),
+        )
+        if (
+            pp.ipo_price is None
+            and pp.current_price is None
+            and pp.peak_price is None
+            and pp.trough_price is None
+            and pp.performance_since_ipo_pct is None
+            and pp.price_at_lock_up_cliff is None
+            and pp.lock_up_cliff_date is None
+        ):
+            return None
+        return pp
+
+    def _hydrate_s1_and_actuals(
+        self, parser_output: dict[str, Any]
+    ) -> tuple[list[S1Projection], list[ActualResult]]:
+        s1_list: list[S1Projection] = []
+        raw_s1 = parser_output.get("s1_projections")
+        if isinstance(raw_s1, list):
+            for item in raw_s1:
+                if isinstance(item, dict):
+                    try:
+                        s1_list.append(S1Projection.model_validate(item))
+                    except Exception:
+                        continue
+        act_list: list[ActualResult] = []
+        raw_a = parser_output.get("actuals")
+        if isinstance(raw_a, list):
+            for item in raw_a:
+                if isinstance(item, dict):
+                    try:
+                        act_list.append(ActualResult.model_validate(item))
+                    except Exception:
+                        continue
+        return s1_list, act_list
+
     def _price_targets(
         self,
         scenario: str,
@@ -268,6 +457,7 @@ class ScenarioBuilder:
         burn_rate: float | None,
         revenue: float | None,
         institutional_interest: str,
+        baseline_price: float | None,
     ) -> PriceTargets:
         sector = sector_performance or 0.0
         burn_penalty = 0.0
@@ -280,23 +470,22 @@ class ScenarioBuilder:
             demand_bonus = -5.0
 
         if scenario == "pessimistic":
-            d30 = 92.0 + sector * 0.25 - burn_penalty + demand_bonus * 0.2
-            d90 = 86.0 + sector * 0.30 - burn_penalty * 1.1 + demand_bonus * 0.2
-            y1 = 80.0 + sector * 0.40 - burn_penalty * 1.2 + demand_bonus * 0.3
+            y1_index = 80.0 + sector * 0.40 - burn_penalty * 1.2 + demand_bonus * 0.3
         elif scenario == "optimistic":
-            d30 = 108.0 + sector * 0.35 - burn_penalty * 0.4 + demand_bonus
-            d90 = 118.0 + sector * 0.45 - burn_penalty * 0.5 + demand_bonus * 1.1
-            y1 = 132.0 + sector * 0.60 - burn_penalty * 0.6 + demand_bonus * 1.3
+            y1_index = 132.0 + sector * 0.60 - burn_penalty * 0.6 + demand_bonus * 1.3
         else:
-            d30 = 100.0 + sector * 0.30 - burn_penalty * 0.8 + demand_bonus * 0.5
-            d90 = 102.0 + sector * 0.35 - burn_penalty * 0.9 + demand_bonus * 0.6
-            y1 = 106.0 + sector * 0.45 - burn_penalty + demand_bonus * 0.8
+            y1_index = 106.0 + sector * 0.45 - burn_penalty + demand_bonus * 0.8
+
+        baseline = baseline_price if baseline_price is not None and baseline_price > 0 else 100.0
+        y1 = baseline * (y1_index / 100.0)
+        d30 = baseline + (y1 - baseline) * (30.0 / 365.0)
+        d90 = baseline + (y1 - baseline) * (90.0 / 365.0)
 
         return PriceTargets(
             **{
-                "30_days": round(max(1.0, d30), 2),
-                "90_days": round(max(1.0, d90), 2),
-                "1_year": round(max(1.0, y1), 2),
+                "30_days": round(max(0.01, d30), 2),
+                "90_days": round(max(0.01, d90), 2),
+                "1_year": round(max(0.01, y1), 2),
             }
         )
 

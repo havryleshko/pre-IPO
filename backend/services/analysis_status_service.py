@@ -29,6 +29,17 @@ async def set_analysis_completed(analysis_id: str, last_completed_agent: str | N
     )
 
 
+async def set_analysis_completed_with_flags(
+    analysis_id: str,
+    last_completed_agent: str | None = None,
+) -> str:
+    return await update_analysis_status(
+        analysis_id=analysis_id,
+        status="completed_with_flags",
+        last_completed_agent=last_completed_agent,
+    )
+
+
 async def set_analysis_failed(analysis_id: str, last_completed_agent: str | None = None) -> str:
     return await update_analysis_status(
         analysis_id=analysis_id,

@@ -1,11 +1,12 @@
 asyncpg
 fastapi
 uvicorn[standard]
-langgraph
+anthropic
 pydantic
 pydantic-settings
 yfinance
 httpx
 pytest
 pytest-asyncio
-reportlab
+textual
+websockets

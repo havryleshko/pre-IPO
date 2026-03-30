@@ -9,7 +9,9 @@ echo "Waiting for Postgres..."
 until docker exec preipo-postgres pg_isready -U postgres -d pre_ipo 2>/dev/null; do sleep 2; done
 
 echo "Running migrations..."
-docker exec -i preipo-postgres psql -U postgres -d pre_ipo -v ON_ERROR_STOP=1 < backend/database/migrations/001_create_core_tables.sql
+for migration in backend/database/migrations/*.sql; do
+  docker exec -i preipo-postgres psql -U postgres -d pre_ipo -v ON_ERROR_STOP=1 < "$migration"
+done
 
 echo "Done. Run in separate terminals:"
 echo "  Terminal 1: PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port 8000"

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.agents.prospectus_parser import ProspectusParser, ProspectusParserInput
+from backend.models.parser_output import ActualResult, S1Projection
 
 
 SAMPLE_S1_WITH_FINANCIALS = """
@@ -66,6 +67,21 @@ Table of Contents. Investing in our Class A common stock involves risks.
 RISK FACTORS
 The risks of the Company include uncertainty regarding its ability to sustain revenue growth and achieve profitability in competitive markets, which could adversely affect our results.
 Another risk is that we may incur additional costs due to evolving regulatory requirements and changes in the market for our products.
+"""
+
+ARM_LIKE_10K_TEXT = """
+Form 10-K Annual Report
+ITEM 1A. RISK FACTORS
+Our business faces material risks because market conditions remain uncertain and could adversely affect our semiconductor licensing revenue and competitive position over the long term.
+Another material risk is that geopolitical tensions could disrupt supply chains and increase operational costs materially beyond our current forecasts in ways we cannot fully predict today.
+A third risk is that increased competition from larger technology companies could reduce pricing power and erode margins in key growth segments we target globally.
+A fourth risk relates to intellectual property challenges that may arise from litigation or regulatory actions in multiple jurisdictions simultaneously.
+A fifth risk is that reliance on a concentrated set of customers could amplify revenue volatility if demand shifts unexpectedly in the smartphone and automotive end markets.
+We may also face a sixth category of risks from foreign exchange fluctuations that are not fully hedged in our current treasury policies.
+
+MANAGEMENT'S DISCUSSION AND ANALYSIS
+Consolidated Statements of Operations. Total revenue was $2.8 billion for the year ended December 31, 2024.
+Cash used in operating activities was $450 million for the year ended December 31, 2024.
 """
 
 
@@ -294,3 +310,55 @@ async def test_run_persists_output(parser: ProspectusParser) -> None:
     saved = save_mock.call_args.kwargs["output"]
     assert saved["company_name"] == "SpaceX"
     assert saved["financials"]["revenue"] == 1_500_000_000
+
+
+def test_parse_10k_actuals_returns_revenue_burn_and_capped_risks(parser: ProspectusParser) -> None:
+    actuals = parser.parse_10k_actuals(ARM_LIKE_10K_TEXT)
+    by_metric = {a.metric: a for a in actuals}
+    assert by_metric["revenue"].actual_value == 2_800_000_000
+    assert by_metric["revenue"].source_filing == "10-K"
+    assert by_metric["burn_rate"].actual_value is not None
+    assert by_metric["burn_rate"].metric == "burn_rate"
+    risk_rows = [a for a in actuals if a.metric.startswith("risk_factor_")]
+    assert len(risk_rows) <= 5
+
+
+def test_compare_s1_to_10k_missed(parser: ProspectusParser) -> None:
+    s1 = [S1Projection(metric="revenue", s1_value=3_000_000_000, s1_context="S-1")]
+    act = [ActualResult(metric="revenue", actual_value=2_400_000_000, source_filing="10-K", source_section="x")]
+    evidence = parser.compare_s1_to_10k(s1, act)
+    assert len(evidence) == 1
+    assert evidence[0].verdict == "missed"
+
+
+def test_compare_s1_to_10k_met(parser: ProspectusParser) -> None:
+    s1 = [S1Projection(metric="revenue", s1_value=100.0, s1_context="S-1")]
+    act = [ActualResult(metric="revenue", actual_value=100.0, source_filing="10-K", source_section="x")]
+    evidence = parser.compare_s1_to_10k(s1, act)
+    assert len(evidence) == 1
+    assert evidence[0].verdict == "met"
+
+
+def test_compare_s1_to_10k_exceeded(parser: ProspectusParser) -> None:
+    s1 = [S1Projection(metric="revenue", s1_value=1_000_000.0, s1_context="S-1")]
+    act = [ActualResult(metric="revenue", actual_value=2_000_000.0, source_filing="10-K", source_section="x")]
+    evidence = parser.compare_s1_to_10k(s1, act)
+    assert len(evidence) == 1
+    assert evidence[0].verdict == "exceeded"
+
+
+def test_parse_harvester_with_10k_sets_has_post_ipo_10k_and_actuals(parser: ProspectusParser) -> None:
+    harvester = {
+        "sec_filings": [
+            {"filing_type": "S-1", "text": SAMPLE_S1_WITH_FINANCIALS},
+            {"filing_type": "10-K", "text": ARM_LIKE_10K_TEXT},
+        ],
+        "yahoo_finance_data": {"comparable_companies": ["A"], "sector_multiples": {"trailing_pe_median": 25.0}},
+        "crunchbase_data": {},
+    }
+    out = parser._parse_harvester_output("ARM", harvester)
+    assert out.has_post_ipo_10k is True
+    metrics = {a.metric: a for a in out.actuals}
+    assert "revenue" in metrics
+    assert "burn_rate" in metrics
+    assert out.financials.revenue == 1_500_000_000

@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 AnalysisComplexityTier = Literal["simple", "standard", "complex"]
-AnalysisStatus = Literal["pending", "running", "completed", "failed"]
+AnalysisStatus = Literal["pending", "running", "completed", "completed_with_flags", "failed"]
 
 
 class AnalysisCreate(BaseModel):

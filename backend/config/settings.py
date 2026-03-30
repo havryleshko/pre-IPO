@@ -49,8 +49,8 @@ class Settings(BaseSettings):
     fred_api_key: str | None = None
     twitter_bearer_token: str | None = None
     llm_api_key: str | None = None
-    llm_model: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-    llm_base_url: str | None = "https://api.together.xyz/v1"
+    llm_model: str = "claude-sonnet-4-6"
+    llm_base_url: str | None = None
 
     request_timeout_seconds: int = Field(default=30, ge=1, le=300)
     source_cache_ttl_hours: int = Field(default=24, ge=1, le=168)
