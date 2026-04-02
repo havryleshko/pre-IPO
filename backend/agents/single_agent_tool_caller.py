@@ -21,6 +21,7 @@ from backend.models.single_agent_result import (
     SingleAgentResult,
     ClaimCheck,
 )
+from backend.agents.narrative_synthesiser import NarrativeSynthesiser
 from backend.models.scenario_output import PatternFlag
 from backend.services.agent_run_logger import (
     log_agent_run_completed,
@@ -332,6 +333,7 @@ class SingleAgentToolCaller:
         )
         self._parser = ProspectusParser()
         self._scenario_builder = ScenarioBuilder()
+        self._narrative_synthesiser = NarrativeSynthesiser()
 
     async def run(self, payload: SingleAgentToolCallerInput) -> dict[str, Any]:
         run_record = await log_agent_run_start(
@@ -428,6 +430,15 @@ class SingleAgentToolCaller:
                     except Exception:
                         continue
 
+            narrative = self._narrative_synthesiser.synthesise(
+                company_name=company_name,
+                parser_output=parser_output,
+                harvester_output=harvester_output,
+                outcome_metrics=outcome_metrics,
+                prediction_claims=prediction_claims,
+                filing_facts=filing_facts,
+            )
+
             result = SingleAgentResult(
                 company_name=company_name,
                 generated_at=datetime.now(timezone.utc),
@@ -436,6 +447,7 @@ class SingleAgentToolCaller:
                 outcome_metrics=outcome_metrics,
                 claim_checks=claim_checks,
                 patterns=patterns_out,
+                narrative=narrative,
             )
             await save_final_report(payload.analysis_id, result.model_dump(mode="json"))
         except Exception as exc:

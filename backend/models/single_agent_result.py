@@ -54,6 +54,15 @@ class ClaimCheck(BaseModel):
     confidence: Literal["high", "medium", "low"] = "medium"
 
 
+class NarrativeReport(BaseModel):
+    headline: str
+    pre_ipo_story: list[str]
+    post_ipo_grounding: list[str]
+    key_differences: list[str]
+    watch_items: list[str]
+    sources_cited: list[str]
+
+
 class SingleAgentResult(BaseModel):
     company_name: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -62,4 +71,5 @@ class SingleAgentResult(BaseModel):
     outcome_metrics: OutcomeMetrics | None = None
     claim_checks: list[ClaimCheck] = Field(default_factory=list)
     patterns: list[PatternFlag] = Field(default_factory=list)
+    narrative: NarrativeReport | None = None
 
