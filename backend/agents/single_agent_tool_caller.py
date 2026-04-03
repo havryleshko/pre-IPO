@@ -430,7 +430,7 @@ class SingleAgentToolCaller:
                     except Exception:
                         continue
 
-            narrative = self._narrative_synthesiser.synthesise(
+            narrative = await self._narrative_synthesiser.synthesise(
                 company_name=company_name,
                 parser_output=parser_output,
                 harvester_output=harvester_output,

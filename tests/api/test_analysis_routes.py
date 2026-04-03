@@ -93,13 +93,15 @@ def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:
         "company_name": "TestCo",
         "status": "completed",
         "complexity_tier": "standard",
-        "last_completed_agent": "investor_brief_synthesizer",
+        "last_completed_agent": "single_agent",
         "created_at": datetime.now(timezone.utc),
-        "harvester_output": None,
-        "parser_output": None,
-        "scenario_output": None,
-        "investor_brief": None,
-        "recommendation_output": None,
+        "final_report": {
+            "company_name": "TestCo",
+            "prediction_claims": [],
+            "filing_facts": [],
+            "claim_checks": [],
+            "patterns": [],
+        },
     }
     with patch(
         "backend.api.routes_analysis.get_analysis_by_id",
@@ -112,7 +114,70 @@ def test_get_analysis_returns_200_with_outputs(client: TestClient) -> None:
     assert data["analysis_id"] == analysis_id
     assert data["company_name"] == "TestCo"
     assert data["status"] == "completed"
-    assert data["last_completed_agent"] == "investor_brief_synthesizer"
+    assert data["last_completed_agent"] == "single_agent"
+    assert data["analysis_result"] is not None
+    assert data["analysis_result"]["company_name"] == "TestCo"
+
+
+def test_get_analysis_returns_narrative_when_present(client: TestClient) -> None:
+    analysis_id = str(uuid4())
+    record = {
+        "id": analysis_id,
+        "company_name": "TestCo",
+        "status": "completed",
+        "complexity_tier": "standard",
+        "last_completed_agent": "single_agent",
+        "created_at": datetime.now(timezone.utc),
+        "final_report": {
+            "company_name": "TestCo",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "prediction_claims": [],
+            "filing_facts": [],
+            "claim_checks": [],
+            "patterns": [],
+            "narrative": {
+                "headline": "TestCo outperformed post-IPO.",
+                "pre_ipo_story": ["Strong demand into listing."],
+                "post_ipo_grounding": ["Shares held above the offer price."],
+                "key_differences": ["Delivery matched the pre-IPO story."],
+                "watch_items": ["Next earnings release."],
+                "sources_cited": ["SEC EDGAR", "Reuters"],
+            },
+        },
+    }
+    with patch(
+        "backend.api.routes_analysis.get_analysis_by_id",
+        new_callable=AsyncMock,
+        return_value=record,
+    ):
+        resp = client.get(f"/analyses/{analysis_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["analysis_result"] is not None
+    assert data["analysis_result"]["narrative"]["headline"] == "TestCo outperformed post-IPO."
+    assert data["analysis_result"]["narrative"]["sources_cited"] == ["SEC EDGAR", "Reuters"]
+
+
+def test_get_analysis_invalid_final_report_returns_null_analysis_result(client: TestClient) -> None:
+    analysis_id = str(uuid4())
+    record = {
+        "id": analysis_id,
+        "company_name": "TestCo",
+        "status": "completed",
+        "complexity_tier": "standard",
+        "last_completed_agent": "single_agent",
+        "created_at": datetime.now(timezone.utc),
+        "final_report": {"not_a_valid_shape": True},
+    }
+    with patch(
+        "backend.api.routes_analysis.get_analysis_by_id",
+        new_callable=AsyncMock,
+        return_value=record,
+    ):
+        resp = client.get(f"/analyses/{analysis_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["analysis_result"] is None
 
 
 def test_get_analysis_returns_404_when_not_found(client: TestClient) -> None:

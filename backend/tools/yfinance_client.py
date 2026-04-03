@@ -1,8 +1,16 @@
 import asyncio
+import logging
 from datetime import date, datetime, timedelta, timezone
 import importlib
 from statistics import median
 from typing import Any
+
+_log = logging.getLogger(__name__)
+_MIN_PLAUSIBLE_IPO_DATE = date(2000, 1, 1)
+
+
+def _is_plausible_ipo_date(d: date) -> bool:
+    return d >= _MIN_PLAUSIBLE_IPO_DATE
 
 from backend.models.harvester_output import YahooFinanceData
 
@@ -33,18 +41,24 @@ def _resolve_ipo_date_for_ticker_sync(ticker: str) -> date | None:
     ipo_raw = info.get("ipoDate")
     if isinstance(ipo_raw, str) and ipo_raw.strip():
         try:
-            return date.fromisoformat(ipo_raw.strip()[:10])
+            candidate = date.fromisoformat(ipo_raw.strip()[:10])
+            if _is_plausible_ipo_date(candidate):
+                return candidate
         except ValueError:
             pass
     if isinstance(ipo_raw, (int, float)):
         try:
-            return datetime.fromtimestamp(int(ipo_raw), tz=timezone.utc).date()
+            candidate = datetime.fromtimestamp(int(ipo_raw), tz=timezone.utc).date()
+            if _is_plausible_ipo_date(candidate):
+                return candidate
         except (ValueError, OSError):
             pass
     epoch = info.get("firstTradeDateEpochUtc")
     if isinstance(epoch, (int, float)):
         try:
-            return datetime.fromtimestamp(int(epoch), tz=timezone.utc).date()
+            candidate = datetime.fromtimestamp(int(epoch), tz=timezone.utc).date()
+            if _is_plausible_ipo_date(candidate):
+                return candidate
         except (ValueError, OSError):
             pass
     try:
@@ -56,14 +70,18 @@ def _resolve_ipo_date_for_ticker_sync(ticker: str) -> date | None:
     first_idx = history.index[0]
     try:
         if isinstance(first_idx, datetime):
-            return first_idx.date()
-        to_py = getattr(first_idx, "to_pydatetime", None)
-        if callable(to_py):
-            dt = to_py()
-            if isinstance(dt, datetime):
-                return dt.date()
+            candidate = first_idx.date()
+        else:
+            to_py = getattr(first_idx, "to_pydatetime", None)
+            if callable(to_py):
+                dt = to_py()
+                candidate = dt.date() if isinstance(dt, datetime) else None
+            else:
+                candidate = None
+        if candidate is not None and _is_plausible_ipo_date(candidate):
+            return candidate
     except Exception:
-        return None
+        pass
     return None
 
 
@@ -116,7 +134,7 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
         return empty_result
 
     try:
-        history = yf.Ticker(normalized_ticker).history(start=ipo_date.isoformat())
+        history = yf.Ticker(normalized_ticker).history(start=ipo_date.isoformat(), auto_adjust=False)
     except Exception:
         return empty_result
 
@@ -126,6 +144,9 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
 
     prices = [price for _, price in close_points]
     ipo_price = prices[0]
+    if ipo_price < 0.50:
+        _log.warning("Implausible IPO price %.4f for %s — skipping", ipo_price, normalized_ticker)
+        return empty_result
     current_price = prices[-1]
     price_at_lock_up_cliff = _first_price_on_or_after(close_points, lock_up_cliff_date)
 
@@ -285,15 +306,13 @@ def _ticker_90d_performance(yf: Any, ticker: str) -> float | None:
 def _extract_close_points(history: Any) -> list[tuple[date, float]]:
     try:
         close = history["Close"].dropna()
+        index = close.index
+        values = close.values
     except Exception:
         return []
 
-    items = getattr(close, "items", None)
-    if not callable(items):
-        return []
-
     points: list[tuple[date, float]] = []
-    for raw_index, raw_value in items():
+    for raw_index, raw_value in zip(index, values):
         point_date = _coerce_history_date(raw_index)
         point_value = _to_float(raw_value)
         if point_date is None or point_value is None:

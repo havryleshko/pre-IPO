@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from typing import Any
@@ -71,7 +72,7 @@ def _build_prompt(
 
 
 class NarrativeSynthesiser:
-    def synthesise(
+    async def synthesise(
         self,
         company_name: str,
         parser_output: dict[str, Any],
@@ -101,17 +102,23 @@ class NarrativeSynthesiser:
         )
 
         try:
-            client = anthropic.Anthropic(api_key=settings.llm_api_key)
-            message = client.messages.create(
-                model=settings.llm_model,
-                max_tokens=1024,
-                system=_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": prompt}],
+            raw = await asyncio.to_thread(
+                self._fetch_narrative_text,
+                prompt,
             )
-            text_blocks = [b for b in message.content if b.type == "text"]
-            raw = text_blocks[0].text if text_blocks else ""
             data = json.loads(raw)
             return NarrativeReport.model_validate(data)
         except Exception as exc:
             logger.warning("NarrativeSynthesiser failed: %s", exc)
             return None
+
+    def _fetch_narrative_text(self, prompt: str) -> str:
+        client = anthropic.Anthropic(api_key=settings.llm_api_key)
+        message = client.messages.create(
+            model=settings.llm_model,
+            max_tokens=1024,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text_blocks = [b for b in message.content if b.type == "text"]
+        return text_blocks[0].text if text_blocks else ""

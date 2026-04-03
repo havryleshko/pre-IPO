@@ -1,4 +1,6 @@
 import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from backend.agents.complexity_classifier import (
     ComplexityClassifierInput,
@@ -196,3 +198,45 @@ async def test_cart_fixture_pipeline_underdelivered() -> None:
     assert isinstance(claim_checks, list)
     status_by_claim_id = {c.get("claim_id"): c.get("status") for c in claim_checks if isinstance(c, dict)}
     assert status_by_claim_id.get("s1_revenue_growth") == "missed"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_persists_narrative_when_llm_enabled() -> None:
+    class FakeTextBlock:
+        type = "text"
+        text = (
+            '{"headline":"Arm held up post-IPO.",'
+            '"pre_ipo_story":["Strong demand into IPO."],'
+            '"post_ipo_grounding":["Shares traded above IPO price."],'
+            '"key_differences":["Delivery was steadier than feared."],'
+            '"watch_items":["Licensing growth."],'
+            '"sources_cited":["SEC EDGAR","Reuters"]}'
+        )
+
+    class FakeMessages:
+        def create(self, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(content=[FakeTextBlock()])
+
+    class FakeAnthropic:
+        def __init__(self, api_key: str) -> None:
+            self.messages = FakeMessages()
+
+    with (
+        patch("backend.agents.narrative_synthesiser.settings.llm_api_key", "test-key"),
+        patch("backend.agents.narrative_synthesiser.settings.llm_model", "claude-test"),
+        patch("backend.agents.narrative_synthesiser.anthropic.Anthropic", FakeAnthropic),
+    ):
+        store = await run_full_pipeline_e2e(
+            PipelineE2EParams(
+                company_name="Arm Holdings",
+                mock_sec_edgar=_mock_sec_edgar_arm,
+                ipo_price_history=_ipo_history_positive(),
+            )
+        )
+
+    final_report = store["final_report"]
+    assert isinstance(final_report, dict)
+    assert final_report.get("narrative") is not None
+    narrative = final_report["narrative"]
+    assert narrative["headline"] == "Arm held up post-IPO."
+    assert narrative["sources_cited"] == ["SEC EDGAR", "Reuters"]

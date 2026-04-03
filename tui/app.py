@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
 from rich.panel import Panel
 from rich.text import Text
 from textual import on
@@ -95,7 +96,14 @@ class PreIPOTui(App):
             return
 
         self.watch_status_text("Creating analysis…")
-        created = await self._api.create_analysis(company)
+        try:
+            created = await self._api.create_analysis(company)
+        except httpx.HTTPStatusError as exc:
+            self.watch_status_text(f"Create failed: HTTP {exc.response.status_code}")
+            return
+        except Exception as exc:
+            self.watch_status_text(f"Create failed: {exc}")
+            return
         self._run = _RunContext(
             analysis_id=created.analysis_id,
             company_name=created.company_name,
@@ -121,14 +129,32 @@ class PreIPOTui(App):
         if self._run is None:
             self.watch_status_text("No analysis yet.")
             return
-        data = await self._api.get_analysis(self._run.analysis_id)
+        try:
+            data = await self._api.get_analysis(self._run.analysis_id)
+        except httpx.HTTPStatusError as exc:
+            self.watch_status_text(f"Refresh failed: HTTP {exc.response.status_code}")
+            return
+        except Exception as exc:
+            self.watch_status_text(f"Refresh failed: {exc}")
+            return
         self.status_text = (
             f"analysis_id={data.analysis_id} status={data.status} last_completed_agent={data.last_completed_agent}"
         )
         if data.analysis_result is None:
-            self.query_one("#result", Static).update(
-                Panel(Text("Analysis running...", style="yellow"), title="Result", border_style="yellow")
-            )
+            if data.status in ("completed", "completed_with_flags", "failed"):
+                msg = (
+                    "No structured result returned (invalid or empty final_report). "
+                    "Check API logs or database for this analysis_id."
+                    if data.status != "failed"
+                    else "Analysis failed. Check API logs."
+                )
+                self.query_one("#result", Static).update(
+                    Panel(Text(msg, style="yellow"), title="Result", border_style="yellow")
+                )
+            else:
+                self.query_one("#result", Static).update(
+                    Panel(Text("Analysis running...", style="yellow"), title="Result", border_style="yellow")
+                )
             return
         body = render_result_plain(data.analysis_result)
         self.query_one("#result", Static).update(
@@ -146,11 +172,22 @@ class PreIPOTui(App):
         if self._run is None:
             self.watch_status_text("No analysis yet.")
             return
-        data = await self._api.get_analysis(self._run.analysis_id)
+        try:
+            data = await self._api.get_analysis(self._run.analysis_id)
+        except httpx.HTTPStatusError as exc:
+            self.watch_status_text(f"Export fetch failed: HTTP {exc.response.status_code}")
+            return
+        except Exception as exc:
+            self.watch_status_text(f"Export fetch failed: {exc}")
+            return
         if data.analysis_result is None:
             self.watch_status_text("No analysis_result to export yet.")
             return
-        await self._api.export_all(self._run.analysis_id, data.analysis_result)
+        try:
+            await self._api.export_all(self._run.analysis_id, data.analysis_result)
+        except Exception as exc:
+            self.watch_status_text(f"Export failed: {exc}")
+            return
         self.watch_status_text(f"Exported to exports/{self._run.analysis_id}/")
 
     async def _consume_progress(self, analysis_id: str) -> None:
@@ -162,6 +199,8 @@ class PreIPOTui(App):
                     continue
                 if ev.tool_call:
                     self.tool_call = ev.tool_call
+                if ev.status in ("completed", "failed"):
+                    await self.refresh_analysis()
         except asyncio.CancelledError:
             return
         except Exception as exc:

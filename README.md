@@ -34,10 +34,10 @@ You need Python and Postgres reachable at the URL in your env.
 
 1. Copy `.env.example` to `.env` and adjust values (especially `DATABASE_URL` and `SEC_EDGAR_USER_AGENT`; SEC expects a descriptive user agent with contact info).
 2. Create the database and run migrations in order from `backend/database/migrations/`.
-3. Start the API: `PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port 8000`
-4. Start the TUI: `python -m tui`
+3. Start the API: `source .venv/bin/activate && PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8001`
+4. Start the TUI: `source .venv/bin/activate && PREIPO_API_URL=http://127.0.0.1:8001 PREIPO_WS_URL=ws://127.0.0.1:8001 python -m tui`
 
-There is a helper script `./run-local.sh` that starts Postgres in Docker and applies the first migration; you can use it as a shortcut, then run the API and frontend in separate terminals as the script prints.
+There is a helper script `./run-local.sh` that starts Postgres in Docker and applies migrations; then run API and TUI in separate terminals as the script prints.
 
 ## Configuration
 

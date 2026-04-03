@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import ValidationError
 
 from backend.api.schemas import (
     AnalysisOutputsResponse,
@@ -14,6 +13,7 @@ from backend.database.queries import (
     create_analysis,
     get_analysis_by_id,
 )
+from backend.models.single_agent_result import SingleAgentResult
 from backend.services.pipeline_runner import run_analysis_pipeline
 
 router = APIRouter(prefix="/analyses", tags=["analysis"])
@@ -43,6 +43,15 @@ async def get_analysis_endpoint(analysis_id: str) -> AnalysisOutputsResponse:
     if analysis is None:
         raise HTTPException(status_code=404, detail="Analysis not found")
     record = dict(analysis)
+    fr = record.get("final_report")
+    parsed_result: SingleAgentResult | None = None
+    if isinstance(fr, dict):
+        try:
+            parsed_result = SingleAgentResult.model_validate(fr)
+        except ValidationError:
+            logger.warning("final_report failed validation for analysis_id=%s", analysis_id)
+    elif fr is not None:
+        logger.warning("final_report is not a dict for analysis_id=%s", analysis_id)
     return AnalysisOutputsResponse.model_validate(
         {
             "analysis_id": record["id"],
@@ -51,7 +60,7 @@ async def get_analysis_endpoint(analysis_id: str) -> AnalysisOutputsResponse:
             "complexity_tier": record["complexity_tier"],
             "last_completed_agent": record.get("last_completed_agent"),
             "created_at": record["created_at"],
-            "analysis_result": record.get("final_report"),
+            "analysis_result": parsed_result,
         }
     )
 

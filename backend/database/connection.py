@@ -1,3 +1,4 @@
+import errno
 import logging
 
 import asyncpg
@@ -18,12 +19,19 @@ async def get_pool() -> asyncpg.Pool:
 
     if _pool is None:
         settings = get_settings()
-        _pool = await asyncpg.create_pool(
-            dsn=_normalize_database_url(settings.database_url),
-            command_timeout=settings.request_timeout_seconds,
-            min_size=1,
-            max_size=10,
-        )
+        try:
+            _pool = await asyncpg.create_pool(
+                dsn=_normalize_database_url(settings.database_url),
+                command_timeout=settings.request_timeout_seconds,
+                min_size=1,
+                max_size=10,
+            )
+        except OSError as exc:
+            if exc.errno == errno.ECONNREFUSED:
+                logger.error(
+                    "PostgreSQL connection refused. Start Postgres first, for example: ./run-local.sh"
+                )
+            raise
         logger.info("Initialized PostgreSQL connection pool")
 
     return _pool

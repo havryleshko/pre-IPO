@@ -1,6 +1,7 @@
 from typing import Awaitable, Callable
 
 from backend.database.queries import get_analysis_by_id
+from backend.models.single_agent_result import SingleAgentResult
 from backend.services.analysis_status_service import set_analysis_failed
 
 AgentExecutor = Callable[[str], Awaitable[object]]
@@ -21,11 +22,11 @@ async def retry_agent_once_on_null_output(
     output_field = _output_field_for_agent(agent_name)
 
     await executor(analysis_id)
-    if await _has_non_null_output(analysis_id, output_field):
+    if await _has_acceptable_output(analysis_id, agent_name):
         return True
 
     await executor(analysis_id)
-    if await _has_non_null_output(analysis_id, output_field):
+    if await _has_acceptable_output(analysis_id, agent_name):
         return True
 
     await set_analysis_failed(analysis_id=analysis_id, last_completed_agent=agent_name)
@@ -34,11 +35,24 @@ async def retry_agent_once_on_null_output(
     )
 
 
-async def _has_non_null_output(analysis_id: str, output_field: str) -> bool:
+async def _has_acceptable_output(analysis_id: str, agent_name: str) -> bool:
     analysis = await get_analysis_by_id(analysis_id)
     if analysis is None:
         return False
-    return analysis.get(output_field) is not None
+    output_field = _output_field_for_agent(agent_name)
+    raw = analysis.get(output_field)
+    if raw is None:
+        return False
+    key = agent_name.strip().lower()
+    if key == "single_agent":
+        if not isinstance(raw, dict):
+            return False
+        try:
+            SingleAgentResult.model_validate(raw)
+        except Exception:
+            return False
+        return True
+    return True
 
 
 def _output_field_for_agent(agent_name: str) -> str:

@@ -72,6 +72,9 @@ async def resume_from_last_completed_agent(
             executed_agents.append(agent_name)
             executed_tracker.append(agent_name)
     except Exception:
+        row = await get_analysis_by_id(payload.analysis_id)
+        if row is not None and str(row.get("status") or "") == "failed":
+            raise
         await set_analysis_failed(
             analysis_id=payload.analysis_id,
             last_completed_agent=executed_tracker[-1] if executed_tracker else last_completed,
