@@ -28,7 +28,7 @@ from backend.services.agent_run_logger import (
     log_agent_run_failed,
     log_agent_run_start,
 )
-from backend.tools.sec_edgar_client import fetch_sec_edgar, resolve_ticker_from_name
+from backend.tools.sec_edgar_client import fetch_sec_edgar, resolve_ticker_from_input
 from backend.tools.newsapi_client import fetch_news_api
 from backend.tools.rss_client import fetch_rss_feeds
 from backend.tools.yfinance_client import (
@@ -367,7 +367,7 @@ class SingleAgentToolCaller:
             ipo_date = _coerce_analysis_date(analysis.get("ipo_date"))
 
             if ticker_norm is None:
-                ticker_norm = (await resolve_ticker_from_name(company_name)).strip().upper()
+                ticker_norm = (await resolve_ticker_from_input(company_name)).strip().upper()
             if ipo_date is None and ticker_norm is not None:
                 ipo_date = await resolve_ipo_date_for_ticker(ticker_norm)
 

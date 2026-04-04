@@ -10,6 +10,7 @@ from backend.tools.sec_edgar_client import (
     _resolve_primary_document_url,
     fetch_post_ipo_filings,
     fetch_sec_edgar,
+    resolve_ticker_from_input,
     resolve_ticker_from_name,
 )
 
@@ -247,6 +248,52 @@ def test_resolve_ticker_from_name_raises_on_issuer_mismatch() -> None:
     ):
         with pytest.raises(RuntimeError, match="SEC issuer mismatch"):
             asyncio.run(resolve_ticker_from_name("Acme"))
+
+
+def test_resolve_ticker_from_input_accepts_direct_ticker() -> None:
+    async def _immediate_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    ticker_payload = {
+        "0": {"title": "Rocket Lab USA, Inc.", "ticker": "RKLB", "cik_str": 1819994},
+    }
+
+    with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
+        "backend.tools.sec_edgar_client._fetch_json", return_value=ticker_payload
+    ):
+        ticker = asyncio.run(resolve_ticker_from_input("RKLB"))
+
+    assert ticker == "RKLB"
+
+
+def test_fetch_sec_edgar_accepts_direct_ticker_input() -> None:
+    async def _immediate_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    ticker_payload = {
+        "0": {"title": "Rocket Lab USA, Inc.", "ticker": "RKLB", "cik_str": 1819994},
+    }
+
+    def _mock_fetch_feed(_: str) -> ElementTree.Element:
+        return _feed_xml(_filing_entry("S-1", "https://example.com/rklb-s1", "2021-07-15"))
+
+    def _mock_primary_text(index_url: str, filing_type: str) -> tuple[str, str]:
+        return index_url, f"{filing_type} text for {index_url}"
+
+    with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
+        "backend.tools.sec_edgar_client._fetch_json", return_value=ticker_payload
+    ), patch(
+        "backend.tools.sec_edgar_client._resolve_conformed_issuer_name", return_value="Rocket Lab USA, Inc."
+    ), patch(
+        "backend.tools.sec_edgar_client._fetch_feed", side_effect=_mock_fetch_feed
+    ), patch(
+        "backend.tools.sec_edgar_client._get_primary_filing_text", side_effect=_mock_primary_text
+    ):
+        filings = asyncio.run(fetch_sec_edgar("RKLB"))
+
+    assert len(filings) == 1
+    assert filings[0].filing_type == "S-1"
+    assert filings[0].url == "https://example.com/rklb-s1"
 
 
 def _feed_xml(*entries: str) -> ElementTree.Element:

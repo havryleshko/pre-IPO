@@ -53,8 +53,8 @@ class PreIPOTui(App):
         yield Header()
         with Vertical(id="root"):
             with Horizontal(id="controls"):
-                yield Label("Company")
-                yield Input(placeholder="e.g. Arm Holdings", id="company")
+                yield Label("Company or ticker")
+                yield Input(placeholder="e.g. Arm Holdings or RKLB", id="company")
                 yield Button("Start", id="start", variant="primary")
                 yield Button("Refresh", id="refresh")
                 yield Button("Export", id="export")

@@ -118,7 +118,8 @@ async def fetch_sec_edgar(company_name: str, max_filings: int = 3) -> list[SecFi
         return []
 
     issuer_name = await asyncio.to_thread(_resolve_conformed_issuer_name, cik)
-    if issuer_name:
+    input_is_direct_ticker = _looks_like_ticker_query(company_name) and _lookup_cik_from_ticker(company_name) == cik
+    if issuer_name and not input_is_direct_ticker:
         matches, score, requested_norm, issuer_norm = _issuer_name_match(company_name, issuer_name)
         if not matches:
             logger.warning(
@@ -172,6 +173,10 @@ async def fetch_post_ipo_filings(ticker: str, ipo_date: date) -> str | None:
 
 async def resolve_ticker_from_name(company_name: str) -> str:
     return await asyncio.to_thread(_resolve_ticker_from_name_sync, company_name)
+
+
+async def resolve_ticker_from_input(query: str) -> str:
+    return await asyncio.to_thread(_resolve_ticker_from_input_sync, query)
 
 
 def _fetch_post_ipo_filings_sync(ticker: str, ipo_date: date) -> str | None:
@@ -241,7 +246,18 @@ def _resolve_ticker_from_name_sync(company_name: str) -> str:
     return best["ticker"]
 
 
+def _resolve_ticker_from_input_sync(query: str) -> str:
+    normalized = query.strip().upper()
+    if _looks_like_ticker_query(normalized) and _lookup_cik_from_ticker(normalized) is not None:
+        return normalized
+    return _resolve_ticker_from_name_sync(query)
+
+
 def _lookup_company_cik(company_name: str) -> str | None:
+    direct_ticker_match = _lookup_cik_from_ticker(company_name) if _looks_like_ticker_query(company_name) else None
+    if direct_ticker_match is not None:
+        return direct_ticker_match
+
     ticker_match = _lookup_company_cik_from_tickers(company_name)
     if ticker_match is not None:
         return ticker_match
@@ -286,6 +302,15 @@ def _lookup_company_cik_from_tickers(company_name: str) -> str | None:
     if _company_match_score(normalized_query, _normalize_name(best["name"])) == (0, 0, 0):
         return None
     return best["cik"]
+
+
+def _looks_like_ticker_query(value: str) -> bool:
+    normalized = value.strip().upper()
+    if not normalized:
+        return False
+    if len(normalized) > 6:
+        return False
+    return bool(re.fullmatch(r"[A-Z][A-Z0-9.\-]*", normalized))
 
 
 def _lookup_cik_from_ticker(ticker: str) -> str | None:

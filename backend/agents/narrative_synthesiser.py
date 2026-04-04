@@ -18,17 +18,29 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = (
     "You are an expert IPO analyst. Given structured data about a company's IPO, "
     "produce a concise analytical narrative in JSON. "
-    "Return ONLY valid JSON matching the schema — no markdown fences, no extra keys."
+    "Return ONLY valid JSON matching the schema — no markdown fences, no extra keys. "
+    "Be brief: headline plus at most 2 short items per list."
 )
 
 _SCHEMA_DESCRIPTION = """{
-  "headline": "<one sentence verdict on the IPO outcome, grounded in news and price data>",
-  "pre_ipo_story": ["<what the S-1 and pre-IPO news claimed about the company>"],
-  "post_ipo_grounding": ["<what actually happened post-IPO, drawn from news coverage and outcome metrics>"],
-  "key_differences": ["<gaps between S-1 claims and post-IPO news/price reality>"],
-  "watch_items": ["<forward-looking items from recent news that investors should monitor>"],
-  "sources_cited": ["<article titles, URLs, or filing references used>"]
+  "headline": "<one short sentence verdict on the IPO outcome, grounded in news and price data>",
+  "pre_ipo_story": ["<max 2 short bullets on what the S-1 and pre-IPO news claimed>"],
+  "post_ipo_grounding": ["<max 2 short bullets on what actually happened post-IPO>"],
+  "key_differences": ["<max 2 short bullets on the gap between claims and reality>"],
+  "watch_items": ["<max 2 short bullets on what to monitor next>"],
+  "sources_cited": ["<max 4 short source labels or URLs used>"]
 }"""
+
+
+def _clean_json_text(raw: str) -> str:
+    text = raw.strip()
+    if text.startswith("```"):
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1 :].strip()
+    if text.endswith("```"):
+        text = text[:-3].rstrip()
+    return text
 
 
 def _build_prompt(
@@ -45,11 +57,11 @@ def _build_prompt(
         sections.append(f"Outcome metrics: {outcome_metrics.model_dump_json()}")
 
     if prediction_claims:
-        claims_json = json.dumps([c.model_dump(mode="json") for c in prediction_claims[:6]], indent=2)
+        claims_json = json.dumps([c.model_dump(mode="json") for c in prediction_claims[:4]], indent=2)
         sections.append(f"Prediction claims from S-1:\n{claims_json}")
 
     if filing_facts:
-        facts_json = json.dumps([f.model_dump(mode="json") for f in filing_facts[:8]], indent=2)
+        facts_json = json.dumps([f.model_dump(mode="json") for f in filing_facts[:6]], indent=2)
         sections.append(f"Filing facts:\n{facts_json}")
 
     key_risks = parser_output.get("key_risks")
@@ -58,13 +70,13 @@ def _build_prompt(
 
     if news_articles:
         news_lines: list[str] = []
-        for article in news_articles[:5]:
+        for article in news_articles[:2]:
             title = article.get("title") or ""
             summary = article.get("summary") or article.get("description") or ""
             url = article.get("url") or ""
             published = article.get("published_at") or article.get("publishedAt") or ""
             date_tag = f" [{published[:10]}]" if published else ""
-            news_lines.append(f"  - {title}{date_tag}: {summary[:400]} ({url})")
+            news_lines.append(f"  - {title}{date_tag}: {summary[:220]} ({url})")
         sections.append("News coverage (use heavily for post_ipo_grounding, watch_items, and sources_cited):\n" + "\n".join(news_lines))
 
     sections.append(f"\nReturn JSON matching this schema:\n{_SCHEMA_DESCRIPTION}")
@@ -106,7 +118,7 @@ class NarrativeSynthesiser:
                 self._fetch_narrative_text,
                 prompt,
             )
-            data = json.loads(raw)
+            data = json.loads(_clean_json_text(raw))
             return NarrativeReport.model_validate(data)
         except Exception as exc:
             logger.warning("NarrativeSynthesiser failed: %s", exc)
@@ -116,7 +128,7 @@ class NarrativeSynthesiser:
         client = anthropic.Anthropic(api_key=settings.llm_api_key)
         message = client.messages.create(
             model=settings.llm_model,
-            max_tokens=1024,
+            max_tokens=2000,
             system=_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )

@@ -44,7 +44,7 @@ Table **`analyses`** (see migrations): among others, `harvester_output`, `parser
 
 ### NarrativeSynthesiser
 
-`backend/agents/narrative_synthesiser.py` — called inside `SingleAgentToolCaller.run()` after `ScenarioBuilder`, before `save_final_report`. Builds a structured prompt from S-1 claims, filing facts, outcome metrics, and up to five news articles, then calls `anthropic.Anthropic.messages.create` with `llm_model` (default `claude-sonnet-4-6`). Parses the JSON response into a `NarrativeReport` (fields: `headline`, `pre_ipo_story`, `post_ipo_grounding`, `key_differences`, `watch_items`, `sources_cited`). Any exception is logged as a warning and returns `None` — the pipeline never fails due to the LLM step.
+`backend/agents/narrative_synthesiser.py` — called inside `SingleAgentToolCaller.run()` after `ScenarioBuilder`, before `save_final_report`. Builds a structured prompt from S-1 claims (up to 4), filing facts (up to 6), outcome metrics, key risks when present, and up to two news articles, then calls `anthropic.Anthropic.messages.create` with `llm_model` (default `claude-sonnet-4-6`) and sufficient `max_tokens` for a short JSON payload. The prompt asks for brief lists (at most two items per array, up to four sources). The response is stripped of markdown code fences if present, then parsed into a `NarrativeReport` (fields: `headline`, `pre_ipo_story`, `post_ipo_grounding`, `key_differences`, `watch_items`, `sources_cited`). Any parse or API failure is logged as a warning and returns `None` — the pipeline never fails due to the LLM step.
 
 ## External behaviour
 

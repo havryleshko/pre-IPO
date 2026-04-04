@@ -58,8 +58,10 @@ async def resume_from_last_completed_agent(
 
     executed_tracker: list[str] = []
     executed_agents: list[str] = []
+    current_agent: str | None = None
     try:
         for agent_name in agents_to_run:
+            current_agent = agent_name
             await retry_agent_once_on_null_output(
                 analysis_id=payload.analysis_id,
                 agent_name=agent_name,
@@ -75,9 +77,10 @@ async def resume_from_last_completed_agent(
         row = await get_analysis_by_id(payload.analysis_id)
         if row is not None and str(row.get("status") or "") == "failed":
             raise
+        failed_at = executed_tracker[-1] if executed_tracker else (current_agent or last_completed)
         await set_analysis_failed(
             analysis_id=payload.analysis_id,
-            last_completed_agent=executed_tracker[-1] if executed_tracker else last_completed,
+            last_completed_agent=failed_at,
         )
         raise
 

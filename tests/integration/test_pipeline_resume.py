@@ -84,7 +84,7 @@ async def test_resume_from_single_agent_skips_execution() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resume_failure_sets_last_completed_to_last_successful() -> None:
+async def test_resume_failure_sets_last_completed_to_current_agent_when_none_succeeded() -> None:
     async def failing_executor(analysis_id: str) -> None:
         raise RuntimeError("agent failed")
 
@@ -104,7 +104,7 @@ async def test_resume_failure_sets_last_completed_to_last_successful() -> None:
                 executors=executors,
             )
 
-    set_failed_mock.assert_awaited_once_with(analysis_id="test-id", last_completed_agent=None)
+    set_failed_mock.assert_awaited_once_with(analysis_id="test-id", last_completed_agent="single_agent")
 
 
 @pytest.mark.asyncio

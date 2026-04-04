@@ -205,7 +205,7 @@ async def run_full_pipeline_e2e(params: PipelineE2EParams) -> dict[str, Any]:
         stack.enter_context(patch("backend.agents.single_agent_tool_caller.fetch_twitter", new=_mock_twitter))
         stack.enter_context(
             patch(
-                "backend.agents.single_agent_tool_caller.resolve_ticker_from_name",
+                "backend.agents.single_agent_tool_caller.resolve_ticker_from_input",
                 new_callable=AsyncMock,
                 return_value="MOCK",
             )
