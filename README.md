@@ -1,8 +1,6 @@
-# pre-IPO
+# Pre-IPO 
 
-This project is a **pre-IPO research assistant**. You give it a company name; it runs an automated pipeline that pulls public filings and related data, then produces structured analysis meant to be readable for people who are not finance experts—plain language, clear verdict-style framing, and actionable angles.
-
-It is aimed at the kind of pain advisors and curious investors feel: IPO research is scattered across filings, news, and market data, and hard to assemble quickly. The app does **not** replace a human advisor or legal due diligence; treat outputs as research aids, not buy or sell instructions.
+**Agent for comparing pre-IPO market predictions with post-IPO filings**
 
 ## What you get
 
@@ -56,6 +54,3 @@ pytest tests/ -v
 - `tests/` — pytest suite  
 - `.cursor/plans/design.md` — deeper architecture notes for contributors  
 
----
-
-*This software is for research and education. It is not financial, legal, or investment advice.*
