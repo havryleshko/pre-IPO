@@ -2,8 +2,6 @@
 
 **Agent for comparing pre-IPO market predictions with post-IPO filings.**
 
-![Pre-IPO agent](docs/tui.png)
-
 ## What is this
 
 You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured JSON result** plus an optional **Claude-written narrative**: outcome-style price metrics, S-1-derived claims and filing facts, and short sections such as pre-IPO story, post-IPO grounding, differences, watch items, and sources. A **Textual TUI** drives the same API from the terminal.
