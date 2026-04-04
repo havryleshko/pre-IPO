@@ -2,7 +2,7 @@
 
 **Agent for comparing pre-IPO market predictions with post-IPO filings.**
 
-[Pre-IPO agent](docs/tui.png)
+![Pre-IPO agent](docs/tui.png)
 
 ## What is this
 
