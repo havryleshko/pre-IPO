@@ -1,20 +1,37 @@
-# Pre-IPO 
+# Pre-IPO
 
-**Agent for comparing pre-IPO market predictions with post-IPO filings**
+**Agent for comparing pre-IPO market predictions with post-IPO filings.**
 
-## What you get
+**Pre-IPO agent**
 
-- A **Textual TUI** to start an analysis, watch progress, and view results in the terminal.
-- A **Python API** (FastAPI) that stores each run in **PostgreSQL** and runs the analysis pipeline.
-- **Resume-friendly runs**: if something fails mid-pipeline, the design favors picking up from where things stopped rather than throwing everything away.
+## What is this
 
-## What it is built with
+You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured JSON result** plus an optional **Claude-written narrative**: outcome-style price metrics, S-1-derived claims and filing facts, and short sections such as pre-IPO story, post-IPO grounding, differences, watch items, and sources. A **Textual TUI** drives the same API from the terminal.
 
-- **Backend:** Python 3.12+, FastAPI, async PostgreSQL (`asyncpg`).
-- **TUI:** Textual (Python).
-- **Data:** SEC EDGAR and other configurable sources (see `.env.example` for API keys you may enable).
+## How it works
 
-## Running everything with Docker
+Mental model: **one background job per analysis** — `POST /analyses` creates a row and schedules `run_analysis_pipeline`; the client polls `GET /analyses/{id}` or listens on **WebSocket** `/analyses/{id}/progress`.
+
+Inside `**single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.md)`):
+
+1. **Resolve** ticker (and IPO date when available) for price history.
+2. **Harvest** in parallel: SEC EDGAR, RSS, NewsAPI, Yahoo Finance — plus a post-IPO **10-K** text path when ticker and IPO date exist.
+3. **Parse** prospectus-style fields from filings into structured parser output.
+4. **Scenario builder** produces scenario output (including price performance fed from IPO-window history).
+5. **NarrativeSynthesiser** calls **Anthropic** with a compact prompt; response is parsed into `NarrativeReport` or skipped on failure.
+6. **Persist** `final_report` as `SingleAgentResult` (claims, facts, metrics, optional narrative).
+
+Comparison logic today is **implicit**: pre-IPO side is partly **S-1 / news**; post-IPO side is **later filings, metrics, and news** — the narrative step is meant to articulate gaps in plain language when enabled.
+
+## Prerequisites
+
+- **Python** 3.12+ (repo also runs on 3.13 in CI/local)
+- **Docker** 24+ (for Compose or `./run-local.sh` Postgres)
+- **PostgreSQL** reachable via `DATABASE_URL`
+- **SEC EDGAR user agent** in the form `AppName/1.0 (contact@email.com)` — required for SEC requests (`SEC_EDGAR_USER_AGENT`)
+- **Optional API keys** (see `[.env.example](.env.example)`): `NEWSAPI_API_KEY`, `CRUNCHBASE_API_KEY`, `FRED_API_KEY`, `TWITTER_BEARER_TOKEN`, `**LLM_API_KEY`** / `LLM_MODEL` (Anthropic — enables narrative sections)
+
+## Quickstart (Docker)
 
 From the repo root:
 
@@ -22,24 +39,54 @@ From the repo root:
 docker compose up --build
 ```
 
-- API: `http://localhost:8000`
+- **API:** `http://localhost:8000`
+- **Web UI:** `http://localhost:3000` only if your tree includes the `frontend/` service from `docker-compose.yml` (some checkouts are API + TUI only)
 
-The backend waits for Postgres and applies the first database migration on startup. If you add or change SQL under `backend/database/migrations/`, apply new files in order (for example with `psql`) so your database schema stays in sync.
+The backend **entrypoint** waits for Postgres, applies **all** SQL files in `backend/database/migrations/` **in filename order**, then starts Uvicorn.
 
-## Running locally without Compose
+To use the **TUI** against Docker API (from the host):
 
-You need Python and Postgres reachable at the URL in your env.
+```bash
+cd /path/to/pre-IPO
+source .venv/bin/activate
+PREIPO_API_URL=http://127.0.0.1:8000 PREIPO_WS_URL=ws://127.0.0.1:8000 python -m tui
+```
 
-1. Copy `.env.example` to `.env` and adjust values (especially `DATABASE_URL` and `SEC_EDGAR_USER_AGENT`; SEC expects a descriptive user agent with contact info).
-2. Create the database and run migrations in order from `backend/database/migrations/`.
-3. Start the API: `source .venv/bin/activate && PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8001`
-4. Start the TUI: `source .venv/bin/activate && PREIPO_API_URL=http://127.0.0.1:8001 PREIPO_WS_URL=ws://127.0.0.1:8001 python -m tui`
+## Running locally
 
-There is a helper script `./run-local.sh` that starts Postgres in Docker and applies migrations; then run API and TUI in separate terminals as the script prints.
+**Postgres + migrations** (Docker helper):
+
+```bash
+./run-local.sh
+```
+
+**API** (port **8001** matches local docs / default `.env.example` client URLs):
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8001
+```
+
+**TUI:**
+
+```bash
+source .venv/bin/activate
+PREIPO_API_URL=http://127.0.0.1:8001 PREIPO_WS_URL=ws://127.0.0.1:8001 python -m tui
+```
+
+Without `./run-local.sh`, create the DB yourself and apply migrations (see **Database migrations**).
 
 ## Configuration
 
-See **`.env.example`** for all supported variables: database URL, CORS origins, optional news and data API keys, timeouts, and logging.
+Copy `[.env.example](.env.example)` to `.env` and set at least `DATABASE_URL`, `SEC_EDGAR_USER_AGENT`, and any optional keys you need. Client defaults in `.env.example` point the TUI at `127.0.0.1:8001`.
+
+## Database migrations
+
+SQL lives in `[backend/database/migrations/](backend/database/migrations/)`. Apply files **in order** (same as `run-local.sh` and the Docker entrypoint):
+
+- **Local script:** `./run-local.sh` pipes each `*.sql` into `psql` against the Docker Postgres on `127.0.0.1:5432`.
+- **Docker:** `backend/entrypoint.sh` runs `psql -f` for each file before Uvicorn.
+- **Manual:** `psql` each file with `-v ON_ERROR_STOP=1` against your `DATABASE_URL` database.
 
 ## Tests
 
@@ -47,10 +94,14 @@ See **`.env.example`** for all supported variables: database URL, CORS origins, 
 pytest tests/ -v
 ```
 
-## Project layout (short)
+## Architecture
 
-- `backend/` — API, agents, database access, pipeline services  
-- `tui/` — Textual terminal UI client  
-- `tests/` — pytest suite  
-- `.cursor/plans/design.md` — deeper architecture notes for contributors  
+Authoritative notes: `[.cursor/plans/design.md](.cursor/plans/design.md)` (pipeline order, `SingleAgentResult`, API contracts, `NarrativeSynthesiser`).
+
+Layout:
+
+- `backend/` — FastAPI app, agents, tools, DB queries, migrations
+- `tui/` — Textual client
+- `tests/` — pytest
+- `frontend/` — optional Vite UI (only if present; referenced by `docker-compose.yml`)
 
