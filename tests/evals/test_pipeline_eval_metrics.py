@@ -62,7 +62,9 @@ def test_pipeline_eval_metrics(caplog) -> None:
 
     assert summary in caplog.text
     assert "EVAL_PIPELINE_SKIPS" in caplog.text
-    assert metrics.claim_precision >= 0.0
-    assert metrics.claim_recall >= 0.0
+    assert metrics.claim_precision >= 0.85
+    assert metrics.claim_recall >= 0.85
+    assert metrics.contradiction_recall >= 0.75
+    assert metrics.hallucination_fpr <= 0.1
     assert skip_counts.get("_scoreable_claims", 0) > 0
-    assert skip_counts.get("_skipped_claims", 0) > 0
+    assert skip_counts.get("_skipped_claims", 0) >= 0

@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from backend.models.eval_case import ClaimType, ContradictionType
 from backend.models.scenario_output import PatternFlag
 
 
@@ -63,6 +64,28 @@ class NarrativeReport(BaseModel):
     sources_cited: list[str]
 
 
+class NewsDerivedClaim(BaseModel):
+    claim_id: str
+    claim_type: ClaimType
+    normalized_value: float | None = None
+    units: str | None = None
+    period: str | None = None
+    source: Literal["news_api", "rss"]
+    evidence_quote: str
+    article_url: str
+    published_at: datetime | None = None
+
+
+class NewsFilingDiscrepancy(BaseModel):
+    discrepancy_id: str
+    news_claim_id: str
+    contradiction_type: ContradictionType
+    news_evidence: str
+    filing_evidence: str
+    derived_value_filing: float | None = None
+    derived_value_news: float | None = None
+
+
 class SingleAgentResult(BaseModel):
     company_name: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -72,4 +95,6 @@ class SingleAgentResult(BaseModel):
     claim_checks: list[ClaimCheck] = Field(default_factory=list)
     patterns: list[PatternFlag] = Field(default_factory=list)
     narrative: NarrativeReport | None = None
+    news_derived_claims: list[NewsDerivedClaim] = Field(default_factory=list)
+    news_filing_discrepancies: list[NewsFilingDiscrepancy] = Field(default_factory=list)
 

@@ -19,6 +19,10 @@ def snowflake_round1_path() -> Path:
     return _gold_dir() / "snowflake_round1.json"
 
 
+def instacart_round1_path() -> Path:
+    return _gold_dir() / "instacart_round1.json"
+
+
 def load_eval_dataset(path: Path) -> EvalDataset:
     return EvalDataset.model_validate_json(path.read_text(encoding="utf-8"))
 
@@ -35,11 +39,16 @@ def load_snowflake_round1() -> EvalDataset:
     return load_eval_dataset(snowflake_round1_path())
 
 
+def load_instacart_round1() -> EvalDataset:
+    return load_eval_dataset(instacart_round1_path())
+
+
 def load_all_eval_datasets() -> list[EvalDataset]:
     return [
         load_reddit_round1(),
         load_arm_round1(),
         load_snowflake_round1(),
+        load_instacart_round1(),
     ]
 
 

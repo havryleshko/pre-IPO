@@ -22,7 +22,9 @@ Orchestration is **not** a multi-node LangGraph chain of separate agents in prod
 |--------|------|
 | `resume_service` | `_PIPELINE_ORDER = ("single_agent",)`. Sets `running` → runs retry wrapper → sets `completed` or `failed`. |
 | `retry_service` | Runs the executor once; if output is missing or (for `single_agent`) **invalid** vs `SingleAgentResult`, runs again; if still bad, `set_analysis_failed` with that agent name and raises. |
-| `SingleAgentToolCaller` | Harvester → prospectus parser → scenario builder → **`NarrativeSynthesiser`** (optional Claude call) → assembles **`final_report`** (`SingleAgentResult` with optional `NarrativeReport`) and persists it. |
+| `SingleAgentToolCaller` | Harvester → prospectus parser → scenario builder → **news claim extraction** (`extract_news_derived_claims` from `harvester_output["news_articles"]`) → **news-vs-filing discrepancies** (`build_news_filing_discrepancies` vs parser/scenario + primary filing text) → **`NarrativeSynthesiser`** (optional Claude call) → assembles **`final_report`** (`SingleAgentResult` with optional `NarrativeReport`) and persists it. |
+
+**Structured news outputs (eval-aligned, optional JSON fields):** `SingleAgentResult` may include `news_derived_claims` (`NewsDerivedClaim`) and `news_filing_discrepancies` (`NewsFilingDiscrepancy`). Claim types align with eval `ClaimType`; discrepancy records reference a news `claim_id` and a contradiction kind (`text_contradiction` | `derived_numeric_contradiction`). These are produced deterministically in the tool caller (regex/heuristics, no extra LLM). Existing `delivery_evidence` / `claim_checks` behaviour is unchanged. No new DB column: values live inside `final_report` JSON; older rows omit the new keys and still validate.
 | `pipeline_runner` | Wraps the executor for WebSocket status (`running` / `failed` / `completed`). |
 
 **Resume:** `last_completed_agent == "single_agent"` means the row is treated as finished for this pipeline; a new run does not re-execute the stage.

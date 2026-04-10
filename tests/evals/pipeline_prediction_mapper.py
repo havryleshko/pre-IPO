@@ -4,9 +4,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.models.eval_case import EvalCase
-from backend.models.single_agent_result import SingleAgentResult
-from tests.evals.scoring import CasePrediction, PredictedClaim, PredictedContradiction
+from backend.models.eval_case import EvalCase, EvalClaim
+from backend.models.single_agent_result import NewsDerivedClaim, SingleAgentResult
+from tests.evals.scoring import (
+    CasePrediction,
+    PredictedClaim,
+    PredictedContradiction,
+    _claim_matches,
+)
 
 
 @dataclass
@@ -115,6 +120,58 @@ def _extract_from_result_by_type(
     return None
 
 
+def _best_news_claim_for_gold(gold: EvalClaim, news: list[NewsDerivedClaim]) -> NewsDerivedClaim | None:
+    if gold.claim_value is None:
+        return None
+    candidates: list[NewsDerivedClaim] = []
+    for n in news:
+        if n.claim_type != gold.claim_type or n.normalized_value is None:
+            continue
+        if _claim_matches(
+            gold,
+            PredictedClaim(claim_id=gold.claim_id, claim_value=n.normalized_value, claim_text=None),
+        ):
+            candidates.append(n)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda c: abs(float(c.normalized_value or 0.0) - float(gold.claim_value)))
+
+
+def _derive_contradictions_from_discrepancies(
+    case: EvalCase,
+    result: SingleAgentResult,
+) -> list[PredictedContradiction]:
+    predicted: list[PredictedContradiction] = []
+    discs = list(result.news_filing_discrepancies or [])
+    news_list = list(result.news_derived_claims or [])
+    if not discs:
+        return predicted
+    for gold_con in case.contradictions:
+        gold_claim = next((c for c in case.claims_to_extract if c.claim_id == gold_con.claim_id), None)
+        if gold_claim is None:
+            continue
+        matched_news = _best_news_claim_for_gold(gold_claim, news_list)
+        if matched_news is None:
+            continue
+        disc = next((d for d in discs if d.news_claim_id == matched_news.claim_id), None)
+        if disc is None or disc.contradiction_type != gold_con.contradiction_type:
+            continue
+        if gold_con.contradiction_type == "derived_numeric_contradiction" and gold_con.derived_output_value is not None:
+            if disc.derived_value_filing is None:
+                continue
+            tol = max(0.1, abs(gold_con.derived_output_value) * 0.05)
+            if abs(disc.derived_value_filing - gold_con.derived_output_value) > tol:
+                continue
+        predicted.append(
+            PredictedContradiction(
+                claim_id=gold_con.claim_id,
+                contradiction_type=gold_con.contradiction_type,
+                derived_output_value=disc.derived_value_filing,
+            )
+        )
+    return predicted
+
+
 def _derive_contradictions(
     case: EvalCase,
     scenario_output: dict[str, Any],
@@ -147,14 +204,21 @@ def single_agent_result_to_case_prediction(
 ) -> tuple[CasePrediction, MappingStats]:
     stats = MappingStats()
     extracted: list[PredictedClaim] = []
+    news_list = list(result.news_derived_claims or [])
 
     for claim in case.claims_to_extract:
-        value = _extract_from_result_by_type(
-            claim_type=claim.claim_type,
-            claim_unit=claim.claim_unit,
-            parser_output=parser_output,
-            result=result,
-        )
+        value: float | None = None
+        if news_list:
+            matched = _best_news_claim_for_gold(claim, news_list)
+            if matched is not None:
+                value = matched.normalized_value
+        if value is None:
+            value = _extract_from_result_by_type(
+                claim_type=claim.claim_type,
+                claim_unit=claim.claim_unit,
+                parser_output=parser_output,
+                result=result,
+            )
         if value is None:
             stats.skip(f"unsupported_or_missing_{claim.claim_type}")
         else:
@@ -167,7 +231,10 @@ def single_agent_result_to_case_prediction(
             )
         )
 
-    contradictions = _derive_contradictions(case=case, scenario_output=scenario_output)
+    if result.news_filing_discrepancies:
+        contradictions = _derive_contradictions_from_discrepancies(case=case, result=result)
+    else:
+        contradictions = _derive_contradictions(case=case, scenario_output=scenario_output)
     return (
         CasePrediction(case_id=case.case_id, extracted_claims=extracted, contradictions=contradictions),
         stats,

@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "company_name": "Instacart",
+  "cases": [
+    {
+      "case_id": "instacart-reuters-2023-raise-rumor",
+      "company_name": "Instacart",
+      "article_title": "IPO gross proceeds rumor",
+      "article_published_on": "2023-08-10",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/example/instacart-ipo-raise-2023",
+      "pre_ipo_news_excerpt": "Instacart had been aiming to raise $0.6 billion to $0.7 billion in the IPO.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/example/instacart-424b4.htm",
+      "filing_excerpt": "The initial public offering price per share is $30.00 for 14,000,000 shares. Total $420,000,000.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "ic_raise_600_700m",
+          "claim_type": "proceeds",
+          "claim_text": "aiming to raise $0.6 billion to $0.7 billion in the IPO",
+          "claim_value": 650.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "derived_numeric_check"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "ic_raise_vs_gross_proceeds",
+          "contradiction_type": "derived_numeric_contradiction",
+          "claim_id": "ic_raise_600_700m",
+          "contradicted_claim_text": "aiming to raise $0.6 billion to $0.7 billion in the IPO",
+          "filing_proof_text": "Total $420,000,000 gross proceeds",
+          "derived_inputs": {
+            "gross_proceeds_usd_millions": 420.0
+          },
+          "derived_output_value": 420.0,
+          "derived_output_unit": "usd_millions"
+        }
+      ]
+    },
+    {
+      "case_id": "instacart-bloomberg-2023-revenue",
+      "company_name": "Instacart",
+      "article_title": "Revenue summary",
+      "article_published_on": "2023-07-15",
+      "article_source": "Bloomberg",
+      "article_url": "https://www.bloomberg.com/example/instacart-revenue",
+      "pre_ipo_news_excerpt": "Instacart posted revenue of about $2,550 million for the last twelve months.",
+      "filing_type": "S-1",
+      "filing_url": "https://www.sec.gov/example/instacart-s1.htm",
+      "filing_excerpt": "Our total revenue was $2,551.0 million for the twelve months ended June 30, 2023.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "ic_revenue_ltm",
+          "claim_type": "revenue",
+          "claim_text": "revenue about $2,550 million LTM",
+          "claim_value": 2550.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    }
+  ]
+}

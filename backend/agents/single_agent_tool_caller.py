@@ -23,6 +23,11 @@ from backend.models.single_agent_result import (
 )
 from backend.agents.narrative_synthesiser import NarrativeSynthesiser
 from backend.models.scenario_output import PatternFlag
+from backend.services.news_claim_extractor import extract_news_derived_claims
+from backend.services.news_filing_discrepancy import (
+    build_news_filing_discrepancies,
+    first_primary_filing_text,
+)
 from backend.services.agent_run_logger import (
     log_agent_run_completed,
     log_agent_run_failed,
@@ -421,6 +426,15 @@ class SingleAgentToolCaller:
                 parser_output=parser_output,
             )
 
+            filing_text = first_primary_filing_text(harvester_output)
+            news_derived_claims = extract_news_derived_claims(harvester_output)
+            news_filing_discrepancies = build_news_filing_discrepancies(
+                news_derived_claims,
+                parser_output,
+                scenario_output,
+                filing_text,
+            )
+
             patterns = scenario_output.get("patterns_flagged") or []
             patterns_out: list[PatternFlag] = []
             if isinstance(patterns, list):
@@ -448,6 +462,8 @@ class SingleAgentToolCaller:
                 claim_checks=claim_checks,
                 patterns=patterns_out,
                 narrative=narrative,
+                news_derived_claims=news_derived_claims,
+                news_filing_discrepancies=news_filing_discrepancies,
             )
             await save_final_report(payload.analysis_id, result.model_dump(mode="json"))
         except Exception as exc:
