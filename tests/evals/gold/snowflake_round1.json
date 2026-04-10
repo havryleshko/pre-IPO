@@ -1,0 +1,206 @@
+{
+  "schema_version": "1.0",
+  "company_name": "Snowflake",
+  "cases": [
+    {
+      "case_id": "snowflake-cnbc-2020-08-24",
+      "company_name": "Snowflake",
+      "article_title": "Post-S-1 filing revenue summary",
+      "article_published_on": "2020-08-24",
+      "article_source": "CNBC",
+      "article_url": "https://www.cnbc.com/2020/08/24/snowflake-files-s-1-for-ipo.html",
+      "pre_ipo_news_excerpt": "Snowflake said that revenue in the first half of 2020 more than doubled to $242 million and revenue jumped from $104 million in the first half of 2019 to $242 million in the same period this year",
+      "filing_type": "S-1",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013010/snowflakes-1.htm",
+      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively, and $104.0 million and $242.0 million for the six months ended July 31, 2019 and 2020, respectively.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "sn_h1_2020_revenue",
+          "claim_type": "revenue",
+          "claim_text": "H1 FY2021 six months ended Jul 31 2020 revenue $242 million",
+          "claim_value": 242.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_h1_2019_revenue",
+          "claim_type": "revenue",
+          "claim_text": "prior six months revenue $104 million",
+          "claim_value": 104.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_h1_growth_pct",
+          "claim_type": "growth_rate",
+          "claim_text": "revenue more than doubled H1 YoY",
+          "claim_value": 133.0,
+          "claim_unit": "percent",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "snowflake-forbes-2020-09-11",
+      "company_name": "Snowflake",
+      "article_title": "Amended S-1 revenue and valuation range",
+      "article_published_on": "2020-09-11",
+      "article_source": "Forbes",
+      "article_url": "https://www.forbes.com/sites/bethkindig/2020/09/11/snowflake-ipo-in-depth-analysis/",
+      "pre_ipo_news_excerpt": "The company delivered 173% growth in the fiscal year ending January 31, growing from $96.7 million to $264.7 million. Revenue grew 133% year-over-year in the first six months of fiscal 2021 ending in July, growing from $104 million to $242 million. Snowflake's amended filing shows the company will be priced at $75 to $85 per share with a valuation between $20.9 billion and $23.7 billion and would raise $2.7 billion.",
+      "filing_type": "S-1",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013010/snowflakes-1.htm",
+      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively, and $104.0 million and $242.0 million for the six months ended July 31, 2019 and 2020, respectively.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "sn_fy2020_revenue",
+          "claim_type": "revenue",
+          "claim_text": "FY2020 revenue $264.7 million",
+          "claim_value": 264.7,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_fy_growth_173",
+          "claim_type": "growth_rate",
+          "claim_text": "FY revenue growth 173%",
+          "claim_value": 173.0,
+          "claim_unit": "percent",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "sn_h1_242_forbes",
+          "claim_type": "revenue",
+          "claim_text": "H1 FY2021 revenue $242 million",
+          "claim_value": 242.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "snowflake-reuters-2020-09-16",
+      "company_name": "Snowflake",
+      "article_title": "IPO-day pricing recap",
+      "article_published_on": "2020-09-16",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/article/business/snowflake-ipo-raises-336-billion-in-years-biggest-us-listing-idUSKBN2662ZY/",
+      "pre_ipo_news_excerpt": "Snowflake's revenue jumped 173.9% to $264.7 million for the full year ended Jan. 31. The IPO was priced at $120 per share and values the firm at north of $30 billion. Aiming to sell 28 million shares at $100 to $110 per share after pricing was raised from $75 to $85 per share.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013667/snowflake424b4.htm",
+      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively. The initial public offering price per share of our Class A common stock is $120.00 for 28,000,000 shares. Total $3,360,000,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "sn_fy_revenue_reuters",
+          "claim_type": "revenue",
+          "claim_text": "FY2020 revenue $264.7 million",
+          "claim_value": 264.7,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_price_120",
+          "claim_type": "offering_price_range",
+          "claim_text": "priced at $120 per share",
+          "claim_value": 120.0,
+          "claim_unit": "usd_per_share",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_shares_28m",
+          "claim_type": "share_count",
+          "claim_text": "28 million shares",
+          "claim_value": 28.0,
+          "claim_unit": "million_shares",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_valuation_north_30b",
+          "claim_type": "valuation",
+          "claim_text": "valuation north of $30 billion",
+          "claim_value": 30.0,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "floor_claim"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "snowflake-bloomberg-2020-09-15",
+      "company_name": "Snowflake",
+      "article_title": "Pricing-day share sale",
+      "article_published_on": "2020-09-15",
+      "article_source": "Bloomberg",
+      "article_url": "https://www.bloomberg.com/news/articles/2020-09-15/snowflake-said-to-price-ipo-above-marketed-range-at-120-a-share",
+      "pre_ipo_news_excerpt": "It sold 28 million shares Tuesday for $120 apiece, above an already elevated range. The shares were marketed at $100 to $110 apiece, boosted from $75 to $85 earlier.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013667/snowflake424b4.htm",
+      "filing_excerpt": "The initial public offering price per share of our Class A common stock is $120.00 for 28,000,000 shares. Total $3,360,000,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "sn_bb_price_120",
+          "claim_type": "offering_price_range",
+          "claim_text": "priced at $120 per share",
+          "claim_value": 120.0,
+          "claim_unit": "usd_per_share",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_bb_shares_28m",
+          "claim_type": "share_count",
+          "claim_text": "28 million shares sold",
+          "claim_value": 28.0,
+          "claim_unit": "million_shares",
+          "comparison_mode": "exact_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "snowflake-crunchbase-2020-09-15",
+      "company_name": "Snowflake",
+      "article_title": "Pre-pricing revenue recap",
+      "article_published_on": "2020-09-15",
+      "article_source": "Crunchbase News",
+      "article_url": "https://news.crunchbase.com/venture/snowflake-ipo-what-you-need-to-know/",
+      "pre_ipo_news_excerpt": "Snowflake reported around $242 million in revenue for the six months that ended on July 31, 2020. Revenue grew about 133 percent from the same period last year, when it came up with about $104 million in revenue.",
+      "filing_type": "S-1",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013010/snowflakes-1.htm",
+      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively, and $104.0 million and $242.0 million for the six months ended July 31, 2019 and 2020, respectively.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "sn_cb_h1_242",
+          "claim_type": "revenue",
+          "claim_text": "H1 revenue ~$242 million",
+          "claim_value": 242.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_cb_h1_104",
+          "claim_type": "revenue",
+          "claim_text": "prior H1 ~$104 million",
+          "claim_value": 104.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_cb_growth_133",
+          "claim_type": "growth_rate",
+          "claim_text": "revenue grew about 133%",
+          "claim_value": 133.0,
+          "claim_unit": "percent",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    }
+  ]
+}

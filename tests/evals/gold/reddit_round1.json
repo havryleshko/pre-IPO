@@ -1,0 +1,307 @@
+{
+  "schema_version": "1.0",
+  "company_name": "Reddit",
+  "cases": [
+    {
+      "case_id": "reddit-bloomberg-2024-02-05",
+      "company_name": "Reddit",
+      "article_title": "Pre-S-1 revenue leak",
+      "article_published_on": "2024-02-05",
+      "article_source": "Bloomberg",
+      "article_url": "https://www.bloomberg.com/news/articles/2024-02-05/reddit-s-revenue-rises-20-ahead-of-ipo-but-isn-t-profitable-yet",
+      "pre_ipo_news_excerpt": "posted a more than 20% rise in revenue in 2023 versus the year before and more than $800 million in revenue last year, above the $666 million it saw in 2022",
+      "filing_type": "S-1",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024006294/reddits-1q423.htm",
+      "filing_excerpt": "Our revenue for the years ended December 31, 2022 and 2023 was $666.7 million and $804.0 million, respectively, representing growth of 21%.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "revenue_2023_804",
+          "claim_type": "revenue",
+          "claim_text": "2023 revenue was more than $800 million",
+          "claim_value": 804.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "2023",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "growth_2023_21pct",
+          "claim_type": "growth_rate",
+          "claim_text": "2023 revenue growth was more than 20% versus 2022",
+          "claim_value": 21.0,
+          "claim_unit": "percent",
+          "claim_period": "2023_vs_2022",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "revenue_2022_666",
+          "claim_type": "revenue",
+          "claim_text": "2022 revenue was about $666 million",
+          "claim_value": 666.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "2022",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "reddit-reuters-2024-02-23",
+      "company_name": "Reddit",
+      "article_title": "Post-S-1 financials summary",
+      "article_published_on": "2024-02-23",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/technology/reddit-makes-us-ipo-filing-public-2024-02-22/",
+      "pre_ipo_news_excerpt": "its net loss narrowed to $90.8 million and revenue growth was roughly 21% in 2023... $804 million, up from $666.7 million a year earlier",
+      "filing_type": "S-1_and_424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024006294/reddits-1q423.htm",
+      "filing_excerpt": "Our revenue for the years ended December 31, 2022 and 2023 was $666.7 million and $804.0 million, respectively, representing growth of 21%. Our net loss for the years ended December 31, 2022 and 2023 was $(158.6) million and $(90.8) million, respectively.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "net_loss_2023_90_8",
+          "claim_type": "net_loss",
+          "claim_text": "2023 net loss narrowed to $90.8 million",
+          "claim_value": 90.8,
+          "claim_unit": "usd_millions",
+          "claim_period": "2023",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "revenue_2023_804_reuters",
+          "claim_type": "revenue",
+          "claim_text": "2023 revenue was $804 million",
+          "claim_value": 804.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "2023",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "growth_2023_21pct_reuters",
+          "claim_type": "growth_rate",
+          "claim_text": "2023 revenue growth was roughly 21%",
+          "claim_value": 21.0,
+          "claim_unit": "percent",
+          "claim_period": "2023_vs_2022",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "reddit-reuters-2024-03-11",
+      "company_name": "Reddit",
+      "article_title": "IPO terms and valuation range",
+      "article_published_on": "2024-03-11",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/markets/deals/reddit-targets-up-64-bln-valuation-much-awaited-us-ipo-2024-03-11/",
+      "pre_ipo_news_excerpt": "Reddit is aiming for a valuation of up to $6.4 billion ... targeting a sale of about 22 million shares, priced between $31 and $34 each, to raise up to $748 million.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024012380/reddit-final424b4.htm",
+      "filing_excerpt": "The initial public offering price per share of our Class A common stock is $34.00. Total $748,000,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "valuation_6_4b",
+          "claim_type": "valuation",
+          "claim_text": "valuation up to $6.4 billion",
+          "claim_value": 6.4,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "derived_numeric_check"
+        },
+        {
+          "claim_id": "shares_22m",
+          "claim_type": "share_count",
+          "claim_text": "about 22 million shares offered",
+          "claim_value": 22.0,
+          "claim_unit": "million_shares",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "raise_748m",
+          "claim_type": "proceeds",
+          "claim_text": "up to $748 million raise",
+          "claim_value": 748.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "exact_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "reddit-reuters-2024-03-01",
+      "company_name": "Reddit",
+      "article_title": "Valuation target update",
+      "article_published_on": "2024-03-01",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/technology/reddit-eyes-up-65-billion-valuation-ipo-wsj-reports-2024-03-01/",
+      "pre_ipo_news_excerpt": "Reddit is eyeing a valuation of up to $6.5 billion in its initial public offering ... target a price range of $31 to $34 per share.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024012380/reddit-final424b4.htm",
+      "filing_excerpt": "The initial public offering price per share of our Class A common stock is $34.00. Total $748,000,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "valuation_6_5b",
+          "claim_type": "valuation",
+          "claim_text": "valuation up to $6.5 billion",
+          "claim_value": 6.5,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "range_31_34",
+          "claim_type": "offering_price_range",
+          "claim_text": "price range of $31 to $34 per share",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "reddit-nyt-2024-02-22",
+      "company_name": "Reddit",
+      "article_title": "Banker valuation floor rumor",
+      "article_published_on": "2024-02-22",
+      "article_source": "New York Times",
+      "article_url": "https://www.nytimes.com/2024/02/22/technology/reddit-initial-public-offering.html",
+      "pre_ipo_news_excerpt": "Reddit's bankers are seeking a valuation of at least $5 billion in its IPO.",
+      "filing_type": "S-1_and_424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024012380/reddit-final424b4.htm",
+      "filing_excerpt": "The initial public offering price per share of our Class A common stock is $34.00. Total $748,000,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "valuation_floor_5b",
+          "claim_type": "valuation",
+          "claim_text": "bankers seek valuation of at least $5 billion",
+          "claim_value": 5.0,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "floor_claim"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "reddit-forbes-2024-02-23",
+      "company_name": "Reddit",
+      "article_title": "Revenue figure mismatch",
+      "article_published_on": "2024-02-23",
+      "article_source": "Forbes",
+      "article_url": "https://www.forbes.com/sites/petercohan/2024/02/23/why-reddits-ipo-is-12-years-late-to-reach-social-media-investors/",
+      "pre_ipo_news_excerpt": "Reddit reported a 21% increase in 2023 revenue to $894 million while reporting a net loss of $91 million.",
+      "filing_type": "S-1_and_424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024006294/reddits-1q423.htm",
+      "filing_excerpt": "Our revenue for the years ended December 31, 2022 and 2023 was $666.7 million and $804.0 million, respectively, representing growth of 21%.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "forbes_revenue_894",
+          "claim_type": "revenue",
+          "claim_text": "2023 revenue was $894 million",
+          "claim_value": 894.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "2023",
+          "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "forbes_growth_21",
+          "claim_type": "growth_rate",
+          "claim_text": "2023 revenue grew 21%",
+          "claim_value": 21.0,
+          "claim_unit": "percent",
+          "comparison_mode": "exact_match"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "forbes_revenue_mismatch",
+          "contradiction_type": "text_contradiction",
+          "claim_id": "forbes_revenue_894",
+          "contradicted_claim_text": "2023 revenue was $894 million",
+          "filing_proof_text": "Our revenue for the years ended December 31, 2022 and 2023 was $666.7 million and $804.0 million, respectively, representing growth of 21%."
+        }
+      ]
+    },
+    {
+      "case_id": "reddit-theinformation-2023-12-26",
+      "company_name": "Reddit",
+      "article_title": "Ad revenue leak mismatch",
+      "article_published_on": "2023-12-26",
+      "article_source": "The Information",
+      "article_url": "https://www.theinformation.com/articles/reddit-falls-short-of-ad-growth-targets-ahead-of-likely-2024-ipo",
+      "pre_ipo_news_excerpt": "Reddit expects to finish this year with ad revenue up more than 20% to slightly over $800 million.",
+      "filing_type": "S-1_and_424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024006294/reddits-1q423.htm",
+      "filing_excerpt": "Advertising revenue for 2023 was $788.782 million; total revenue was $804.029 million.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "ad_revenue_over_800",
+          "claim_type": "ad_revenue",
+          "claim_text": "2023 ad revenue was slightly over $800 million",
+          "claim_value": 800.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "2023",
+          "comparison_mode": "floor_claim"
+        },
+        {
+          "claim_id": "ad_growth_over_20",
+          "claim_type": "growth_rate",
+          "claim_text": "ad revenue growth was more than 20%",
+          "claim_value": 20.0,
+          "claim_unit": "percent",
+          "comparison_mode": "floor_claim"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "ad_revenue_floor_miss",
+          "contradiction_type": "text_contradiction",
+          "claim_id": "ad_revenue_over_800",
+          "contradicted_claim_text": "2023 ad revenue was slightly over $800 million",
+          "filing_proof_text": "Advertising revenue for 2023 was $788.782 million."
+        }
+      ]
+    },
+    {
+      "case_id": "reddit-marketwatch-2024-03-11",
+      "company_name": "Reddit",
+      "article_title": "Valuation math mismatch",
+      "article_published_on": "2024-03-11",
+      "article_source": "MarketWatch",
+      "article_url": "https://www.marketwatch.com/story/reddit-launches-ipo-at-a-valuation-of-up-to-5-5-billion-e062fed1",
+      "pre_ipo_news_excerpt": "Reddit launches IPO at a valuation of up to $5.5 billion.",
+      "filing_type": "424B4",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1713445/000162828024012380/reddit-final424b4.htm",
+      "filing_excerpt": "The initial public offering price per share of our Class A common stock is $34.00. Total $748,000,000.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "marketwatch_valuation_5_5b",
+          "claim_type": "valuation",
+          "claim_text": "IPO valuation up to $5.5 billion",
+          "claim_value": 5.5,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "derived_numeric_check"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "marketwatch_valuation_math",
+          "contradiction_type": "derived_numeric_contradiction",
+          "claim_id": "marketwatch_valuation_5_5b",
+          "contradicted_claim_text": "IPO valuation up to $5.5 billion",
+          "filing_proof_text": "The initial public offering price per share of our Class A common stock is $34.00. Total $748,000,000.",
+          "derived_inputs": {
+            "offering_price_per_share": 34.0,
+            "gross_proceeds_usd_millions": 748.0,
+            "implied_equity_value_usd_billions": 6.4
+          },
+          "derived_output_value": 6.4,
+          "derived_output_unit": "usd_billions"
+        }
+      ]
+    }
+  ]
+}

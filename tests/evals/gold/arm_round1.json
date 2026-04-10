@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "company_name": "Arm Holdings",
+  "cases": [
+    {
+      "case_id": "arm-reuters-2023-08-18",
+      "company_name": "Arm Holdings",
+      "article_title": "Pre-filing revenue leak",
+      "article_published_on": "2023-08-18",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/technology/arms-full-year-revenue-fell-1-ahead-ipo-source-2023-08-18/",
+      "pre_ipo_news_excerpt": "Arm's sales fell to $2.68 billion in the 12 months ended March 31 and fell 1%",
+      "filing_type": "other",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1973239/000119312523216983/d393891df1.htm",
+      "filing_excerpt": "For the fiscal year ended March 31, 2023, our total revenue was relatively flat at $2,679 million, as compared to $2,703 million in the fiscal year ended March 31, 2022.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "arm_fy2023_revenue",
+          "claim_type": "revenue",
+          "claim_text": "FY2023 revenue $2.68 billion",
+          "claim_value": 2680.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "FY2023",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "arm_fy2023_growth",
+          "claim_type": "growth_rate",
+          "claim_text": "revenue fell 1% YoY",
+          "claim_value": -1.0,
+          "claim_unit": "percent",
+          "claim_period": "FY2023_vs_FY2022",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "arm-reuters-2023-08-02",
+      "company_name": "Arm Holdings",
+      "article_title": "Pre-filing valuation target",
+      "article_published_on": "2023-08-02",
+      "article_source": "Reuters",
+      "article_url": "https://www.reuters.com/markets/deals/softbanks-arm-ltd-targets-60-bln-plus-ipo-by-september-bloomberg-news-2023-08-02/",
+      "pre_ipo_news_excerpt": "targeting an initial public offering (IPO) at a valuation of between $60 billion and $70 billion",
+      "filing_type": "other",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1973239/000119312523235320/d550931d424b4.htm",
+      "filing_excerpt": "The initial public offering price per ADS is $51.00 for 95,500,000 American Depositary Shares. Total $4,870,500,000.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "arm_valuation_60_70b",
+          "claim_type": "valuation",
+          "claim_text": "IPO valuation between $60 billion and $70 billion",
+          "claim_value": 65.0,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "derived_numeric_check"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "arm_valuation_vs_pricing",
+          "contradiction_type": "derived_numeric_contradiction",
+          "claim_id": "arm_valuation_60_70b",
+          "contradicted_claim_text": "IPO valuation between $60 billion and $70 billion",
+          "filing_proof_text": "$51.00 per ADS, 95,500,000 ADS, Total $4,870,500,000; implied fully-diluted equity ~$54.5 billion",
+          "derived_inputs": {
+            "price_per_ads_usd": 51.0,
+            "ads_offered_millions": 95.5,
+            "gross_proceeds_usd_millions": 4870.5,
+            "implied_equity_value_usd_billions": 54.5
+          },
+          "derived_output_value": 54.5,
+          "derived_output_unit": "usd_billions"
+        }
+      ]
+    },
+    {
+      "case_id": "arm-bloomberg-2023-08-21",
+      "company_name": "Arm Holdings",
+      "article_title": "Pre-filing raise-size target",
+      "article_published_on": "2023-08-21",
+      "article_source": "Bloomberg",
+      "article_url": "https://www.bloomberg.com/news/articles/2023-08-21/softbank-s-arm-files-for-ipo-that-could-be-2023-s-biggest",
+      "pre_ipo_news_excerpt": "Arm had been aiming to raise $8 billion to $10 billion in the IPO",
+      "filing_type": "other",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1973239/000119312523235320/d550931d424b4.htm",
+      "filing_excerpt": "The initial public offering price per ADS is $51.00 for 95,500,000 American Depositary Shares. Total $4,870,500,000.",
+      "expected_label": "contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "arm_raise_8_10b",
+          "claim_type": "proceeds",
+          "claim_text": "aiming to raise $8 billion to $10 billion in the IPO",
+          "claim_value": 9000.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "derived_numeric_check"
+        }
+      ],
+      "contradictions": [
+        {
+          "contradiction_id": "arm_raise_vs_gross_proceeds",
+          "contradiction_type": "derived_numeric_contradiction",
+          "claim_id": "arm_raise_8_10b",
+          "contradicted_claim_text": "aiming to raise $8 billion to $10 billion in the IPO",
+          "filing_proof_text": "Total $4,870,500,000 gross proceeds",
+          "derived_inputs": {
+            "gross_proceeds_usd_millions": 4870.5
+          },
+          "derived_output_value": 4870.5,
+          "derived_output_unit": "usd_millions"
+        }
+      ]
+    },
+    {
+      "case_id": "arm-wsj-2023-09-01",
+      "company_name": "Arm Holdings",
+      "article_title": "Post-filing valuation target update",
+      "article_published_on": "2023-09-01",
+      "article_source": "WSJ",
+      "article_url": "https://www.wsj.com/finance/investing/arm-looks-to-target-ipo-at-50-55-billion-valuation-85b17011",
+      "pre_ipo_news_excerpt": "Arm Looks to Target IPO at $50 Billion to $55 Billion Valuation",
+      "filing_type": "other",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1973239/000119312523235320/d550931d424b4.htm",
+      "filing_excerpt": "The initial public offering price per ADS is $51.00 for 95,500,000 American Depositary Shares. Total $4,870,500,000.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "arm_valuation_50_55b",
+          "claim_type": "valuation",
+          "claim_text": "IPO valuation target $50 to $55 billion",
+          "claim_value": 52.5,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "derived_numeric_check"
+        }
+      ],
+      "contradictions": []
+    },
+    {
+      "case_id": "arm-forbes-2023-09-11",
+      "company_name": "Arm Holdings",
+      "article_title": "Post-filing revenue summary",
+      "article_published_on": "2023-09-11",
+      "article_source": "Forbes",
+      "article_url": "https://www.forbes.com/sites/greatspeculations/2023/09/11/arm-holdings-dont-bail-out-this-private-equity-giant/",
+      "pre_ipo_news_excerpt": "Arm Holdings generated nearly $2.7 billion in revenue in fiscal 2023 (year end March 2023)",
+      "filing_type": "other",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1973239/000119312523235320/d550931d424b4.htm",
+      "filing_excerpt": "For the fiscal year ended March 31, 2023, our total revenue was relatively flat at $2,679 million, as compared to $2,703 million in the fiscal year ended March 31, 2022.",
+      "expected_label": "no_contradiction",
+      "claims_to_extract": [
+        {
+          "claim_id": "arm_fy2023_revenue_forbes",
+          "claim_type": "revenue",
+          "claim_text": "FY2023 revenue nearly $2.7 billion",
+          "claim_value": 2700.0,
+          "claim_unit": "usd_millions",
+          "claim_period": "FY2023",
+          "comparison_mode": "approximate_match"
+        }
+      ],
+      "contradictions": []
+    }
+  ]
+}
