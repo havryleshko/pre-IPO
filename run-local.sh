@@ -55,5 +55,5 @@ if command -v pg_isready >/dev/null 2>&1; then
 fi
 
 echo "Done. Run in separate terminals:"
-echo "  Terminal 1: source .venv/bin/activate && PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8001"
-echo "  Terminal 2: source .venv/bin/activate && PREIPO_API_URL=http://127.0.0.1:8001 PREIPO_WS_URL=ws://127.0.0.1:8001 python -m tui"
+echo "  Terminal 1: source .venv/bin/activate && PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8000"
+echo "  Terminal 2: source .venv/bin/activate && PREIPO_API_URL=http://127.0.0.1:8000 PREIPO_WS_URL=ws://127.0.0.1:8000 python -m tui"

@@ -8,11 +8,11 @@ User provides a **company name**. The system pulls **public** data (SEC filings,
 
 ## Runtime shape
 
-- **API:** FastAPI on port **8001** in local docs (`uvicorn`), or **8000** under `docker compose`.
-- **Client:** **Textual TUI** (`python -m tui`) talks to the API and WebSocket progress.
+- **API:** FastAPI on port **8000** for local `uvicorn` and under `docker compose` (unless you override the port).
+- **Client:** **`preipo` CLI** (`cli/main.py`) is the primary local entrypoint and uses the same HTTP surface (`POST/GET /analyses`), defaulting to `http://127.0.0.1:8000` when `PREIPO_API_URL` is unset. **Textual TUI** (`python -m tui` or `preipo tui`) is an alternate client on top of the same API/WebSocket flow.
 - **Database:** PostgreSQL; connection string in `DATABASE_URL` (`postgresql+asyncpg://...` in app config; asyncpg normalises to `postgresql://`).
 
-Local bootstrap: `./run-local.sh` starts Postgres in Docker, applies SQL under `backend/database/migrations/`, then you run API + TUI in separate shells (see `README.md`).
+Local bootstrap: `./run-local.sh` starts Postgres in Docker, applies SQL under `backend/database/migrations/`, then you run the API plus a client in separate shells (`preipo` first; TUI optional). See `README.md`.
 
 ## Pipeline (single resumable stage)
 

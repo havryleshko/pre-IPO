@@ -14,11 +14,11 @@ from tui.types import AnalysisOutputsResponse, CreateAnalysisResponse, ProgressE
 
 
 def _default_api_base() -> str:
-    return os.environ.get("PREIPO_API_URL", "http://localhost:8000").rstrip("/")
+    return os.environ.get("PREIPO_API_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
 def _default_ws_base() -> str:
-    return os.environ.get("PREIPO_WS_URL", "ws://localhost:8000").rstrip("/")
+    return os.environ.get("PREIPO_WS_URL", "ws://127.0.0.1:8000").rstrip("/")
 
 
 class ApiClient:

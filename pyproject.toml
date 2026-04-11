@@ -25,6 +25,9 @@ test = [
     "pytest-asyncio",
 ]
 
+[project.scripts]
+preipo = "cli.main:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["backend*", "tui*"]
+include = ["backend*", "tui*", "cli*"]

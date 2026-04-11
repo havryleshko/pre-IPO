@@ -6,7 +6,7 @@
 
 ## What is this
 
-You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured JSON result** plus an optional **Claude-written narrative**: outcome-style price metrics, S-1-derived claims and filing facts, and short sections such as pre-IPO story, post-IPO grounding, differences, watch items, and sources. A **Textual TUI** drives the same API from the terminal.
+You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured JSON result** plus an optional **Claude-written narrative**: outcome-style price metrics, S-1-derived claims and filing facts, and short sections such as pre-IPO story, post-IPO grounding, differences, watch items, and sources. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
 
 ## How it works
 
@@ -54,31 +54,49 @@ PREIPO_API_URL=http://127.0.0.1:8000 PREIPO_WS_URL=ws://127.0.0.1:8000 python -m
 
 ## Running locally
 
+Install the package (once per venv) so the `preipo` command and imports resolve:
+
+```bash
+source .venv/bin/activate
+pip install -e ".[test]"
+```
+
 **Postgres + migrations** (Docker helper):
 
 ```bash
 ./run-local.sh
 ```
 
-**API** (port **8001** matches local docs / default `.env.example` client URLs):
+**API** (port **8000** for local `uvicorn`; Docker Compose also exposes the API on **8000**):
 
 ```bash
 source .venv/bin/activate
-PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8001
+PYTHONPATH=. uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+**CLI** (primary local entrypoint; default base URL is `http://127.0.0.1:8000`, override with `PREIPO_API_URL` or `preipo --api-url …`):
+
+```bash
+source .venv/bin/activate
+preipo doctor
+preipo analyze "Arm Holdings"
+preipo analyze "Arm Holdings" --show-id --json   # full JSON on stdout; id on stderr
+preipo export <analysis_id>
+preipo tui                                        # alternate UI on the same API
 ```
 
 **TUI:**
 
 ```bash
 source .venv/bin/activate
-PREIPO_API_URL=http://127.0.0.1:8001 PREIPO_WS_URL=ws://127.0.0.1:8001 python -m tui
+PREIPO_API_URL=http://127.0.0.1:8000 PREIPO_WS_URL=ws://127.0.0.1:8000 python -m tui
 ```
 
 Without `./run-local.sh`, create the DB yourself and apply migrations (see **Database migrations**).
 
 ## Configuration
 
-Copy `[.env.example](.env.example)` to `.env` and set at least `DATABASE_URL`, `SEC_EDGAR_USER_AGENT`, and any optional keys you need. Client defaults in `.env.example` point the TUI at `127.0.0.1:8001`.
+Copy `[.env.example](.env.example)` to `.env` and set at least `DATABASE_URL`, `SEC_EDGAR_USER_AGENT`, and any optional keys you need. Point `PREIPO_API_URL` / `PREIPO_WS_URL` at your API if not using the defaults (`127.0.0.1:8000`).
 
 ## Database migrations
 
@@ -101,6 +119,7 @@ Authoritative notes: `[.cursor/plans/design.md](.cursor/plans/design.md)` (pipel
 Layout:
 
 - `backend/` — FastAPI app, agents, tools, DB queries, migrations
+- `cli/` — `preipo` console entrypoint (HTTP client to the API)
 - `tui/` — Textual client
 - `tests/` — pytest
 - `frontend/` — optional Vite UI (only if present; referenced by `docker-compose.yml`)
