@@ -134,7 +134,46 @@ def _filing_ad_revenue_millions(filing_text: str) -> tuple[float | None, str]:
         return None, ""
 
 
+def _valuation_billion_range_midpoint(filing_text: str) -> float | None:
+    for pattern in (
+        r"between\s+\$?\s*([\d,]+(?:\.\d+)?)\s*billion\s+and\s+\$?\s*([\d,]+(?:\.\d+)?)\s*billion",
+        r"from\s+\$?\s*([\d,]+(?:\.\d+)?)\s*billion\s+to\s+\$?\s*([\d,]+(?:\.\d+)?)\s*billion",
+        r"\$(\d+(?:\.\d+)?)\s*billion\s*(?:to|-|and)\s*\$?\s*(\d+(?:\.\d+)?)\s*billion",
+    ):
+        m = re.search(pattern, filing_text, flags=re.IGNORECASE)
+        if not m:
+            continue
+        try:
+            a = float(m.group(1).replace(",", ""))
+            b = float(m.group(2).replace(",", ""))
+            return round((a + b) / 2.0, 4)
+        except ValueError:
+            continue
+    return None
+
+
+def _valuation_single_billion_after_keywords(filing_text: str) -> float | None:
+    for pattern in (
+        r"market\s+capitalization[^$]{0,120}\$([\d,]+(?:\.\d+)?)\s*billion",
+        r"midpoint[^$]{0,80}\$([\d,]+(?:\.\d+)?)\s*billion",
+        r"approximately\s+\$([\d,]+(?:\.\d+)?)\s*billion",
+    ):
+        m = re.search(pattern, filing_text, flags=re.IGNORECASE)
+        if m:
+            try:
+                return float(m.group(1).replace(",", ""))
+            except ValueError:
+                continue
+    return None
+
+
 def _infer_filing_valuation_billions(filing_text: str) -> float | None:
+    mid = _valuation_billion_range_midpoint(filing_text)
+    if mid is not None:
+        return mid
+    single_kw = _valuation_single_billion_after_keywords(filing_text)
+    if single_kw is not None:
+        return single_kw
     lower = filing_text.lower()
     explicit = re.search(r"\$([\d,]+(?:\.\d+)?)\s*billion", lower)
     if explicit:
@@ -149,10 +188,20 @@ def _infer_filing_valuation_billions(filing_text: str) -> float | None:
 
 
 def _infer_filing_proceeds_millions(filing_text: str) -> float | None:
-    if "4,870,500,000" in filing_text:
-        return 4870.5
-    if "3,360,000,000" in filing_text:
-        return 3360.0
+    m_total = re.search(
+        r"total\s+\$([\d,]+(?:\.\d+)?)\s*(?:million|thousand|billion)?",
+        filing_text,
+        flags=re.IGNORECASE,
+    )
+    if m_total:
+        try:
+            raw = float(m_total.group(1).replace(",", ""))
+            if raw >= 1_000_000:
+                return round(raw / 1_000_000.0, 4)
+            if raw >= 1_000:
+                return round(raw / 1_000.0, 4)
+        except ValueError:
+            pass
     values: list[float] = []
     for m in re.finditer(r"\$\s*([\d,]+(?:\.\d+)?)\s*(billion|million)?", filing_text, flags=re.IGNORECASE):
         try:
@@ -205,6 +254,8 @@ def _comparison_mode_for_claim(claim: NewsDerivedClaim) -> ComparisonMode:
         q = claim.evidence_quote.lower()
         if "at least" in q or "least $" in q:
             return "floor_claim"
+        if "up to" in q or "up-to" in q:
+            return "approximate_match"
         return "derived_numeric_check"
     if claim.claim_type == "proceeds":
         return "derived_numeric_check"

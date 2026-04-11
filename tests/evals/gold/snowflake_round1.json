@@ -52,7 +52,7 @@
       "pre_ipo_news_excerpt": "The company delivered 173% growth in the fiscal year ending January 31, growing from $96.7 million to $264.7 million. Revenue grew 133% year-over-year in the first six months of fiscal 2021 ending in July, growing from $104 million to $242 million. Snowflake's amended filing shows the company will be priced at $75 to $85 per share with a valuation between $20.9 billion and $23.7 billion and would raise $2.7 billion.",
       "filing_type": "S-1",
       "filing_url": "https://www.sec.gov/Archives/edgar/data/1640147/000162828020013010/snowflakes-1.htm",
-      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively, and $104.0 million and $242.0 million for the six months ended July 31, 2019 and 2020, respectively.",
+      "filing_excerpt": "Our revenue was $96.7 million and $264.7 million for the fiscal years ended January 31, 2019 and 2020, respectively, and $104.0 million and $242.0 million for the six months ended July 31, 2019 and 2020, respectively. We estimate that our pro forma as adjusted market capitalization will be between $20.9 billion and $23.7 billion, based on an assumed initial public offering price of $80.00 per share (the midpoint of the estimated price range). The initial public offering price is expected to be between $75.00 and $85.00 per share. We are offering 33,750,000 shares of our Class A common stock. After giving effect to this offering, we estimate aggregate gross proceeds of approximately $2,700 million before underwriting discounts and commissions (assuming no exercise of the underwriters option to purchase additional shares and the midpoint price of $80.00 per share).",
       "expected_label": "no_contradiction",
       "claims_to_extract": [
         {
@@ -78,6 +78,30 @@
           "claim_value": 242.0,
           "claim_unit": "usd_millions",
           "comparison_mode": "exact_match"
+        },
+        {
+          "claim_id": "sn_forbes_price_75_85",
+          "claim_type": "offering_price_range",
+          "claim_text": "priced at $75 to $85 per share",
+          "claim_value": 80.0,
+          "claim_unit": "usd_per_share",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "sn_forbes_valuation_band",
+          "claim_type": "valuation",
+          "claim_text": "valuation between $20.9 billion and $23.7 billion",
+          "claim_value": 22.3,
+          "claim_unit": "usd_billions",
+          "comparison_mode": "approximate_match"
+        },
+        {
+          "claim_id": "sn_forbes_raise_2700m",
+          "claim_type": "proceeds",
+          "claim_text": "would raise $2.7 billion",
+          "claim_value": 2700.0,
+          "claim_unit": "usd_millions",
+          "comparison_mode": "approximate_match"
         }
       ],
       "contradictions": []

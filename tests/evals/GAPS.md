@@ -2,11 +2,9 @@
 
 ## Current limitations
 
-- Filing contradiction checks still rely on excerpt text and heuristics (signatures for implied valuation / proceeds); they do not fetch full filing sections in the eval harness.
-- Derived valuation oracles remain filing-signature based where the filing excerpt omits an explicit equity value:
-  - Reddit 424B4: `$34.00` and `$748,000,000` implies `~$6.4B`.
-  - Arm 424B4: `$51.00`, `95,500,000` ADS, `Total $4,870,500,000` implies `~$54.5B`.
-  - Snowflake 424B4: `$120.00`, `28,000,000` shares, `Total $3,360,000,000` implies `~$33B`.
+- The harness still injects **filing excerpts**, not full EDGAR documents; parser and discrepancy logic only see what gold includes.
+- **Implied equity** when the excerpt has no explicit billion valuation sentence still uses **legacy filing signatures** in `news_filing_discrepancy._infer_filing_valuation_billions` (Reddit 424B4 ~$6.4B, Arm ~$54.5B, Snowflake 424B4 ~$33B). Prefer adding **range or midpoint language** to gold excerpts so generic rules apply first.
+- **Generic filing helpers** (recent): billion-band midpoint (`between $A billion and $B billion`, `$X billion to $Y billion`), keyword-scoped single-billion phrases, and **Total $N** gross proceeds before falling back to scanning dollar amounts.
 
 ## Coverage
 
@@ -18,17 +16,18 @@
 
 ## Product alignment (recent)
 
-- The single-agent pipeline now persists optional `news_derived_claims` and `news_filing_discrepancies` on `SingleAgentResult` (see `backend/services/news_claim_extractor.py`, `backend/services/news_filing_discrepancy.py`, wired in `SingleAgentToolCaller`).
+- The single-agent pipeline persists optional `news_derived_claims` and `news_filing_discrepancies` on `SingleAgentResult` (see `backend/services/news_claim_extractor.py`, `backend/services/news_filing_discrepancy.py`, wired in `SingleAgentToolCaller`).
 - The pipeline eval mapper prefers those fields when present; `delivery_evidence` is used for contradiction mapping only when `news_filing_discrepancies` is empty.
+- **Valuation “up to”** phrasing in news evidence uses **approximate** comparison for discrepancy checks to avoid false positives against higher filing-implied values.
 
 ## Remaining gaps
 
-- Forbes Snowflake case uses a revenue-only filing excerpt so amended valuation prose stays consistent with `no_contradiction`; full amended-range scoring would need that excerpt in gold.
-- Bloomberg Snowflake item omits headline post-open market-cap figures not grounded in the 424B4 excerpt.
-- No multilingual or non-US forms beyond Arm F-1 treated as `filing_type` `other`.
+- **Snowflake–Bloomberg (2020-09-15):** gold `claims_to_extract` stay limited to price and share count grounded in the 424B4 snippet; headline post-open market-cap figures are out of scope unless the article and excerpt are extended together.
+- **Other rows:** repeat the Forbes pattern (longer `filing_excerpt` or narrower `pre_ipo_news_excerpt`) wherever the article cites numbers not present in the filing text.
+- **No multilingual or non-US** forms beyond Arm F-1 treated as `filing_type` `other`.
 
 ## Next expansions
 
-- Add fuller filing context slices per case to reduce excerpt-selection bias.
-- Broaden production extraction beyond regex v1 (e.g. additional claim types, safer floor vs ceiling detection from phrasing).
+- Add fuller filing slices for remaining cases (especially any still “thin” on pricing/proceeds).
+- Further reduce legacy valuation signatures by encoding implied equity as explicit sentences in gold where factually correct.
 - Optional API exposure of `news_derived_claims` / `news_filing_discrepancies` for non-TUI clients if needed.

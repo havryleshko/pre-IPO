@@ -47,6 +47,24 @@ def test_extract_arm_valuation_range_midpoint() -> None:
     assert val == 65.0
 
 
+def test_extract_valuation_up_to_billion() -> None:
+    ho = {
+        "sources_active": ["news_api"],
+        "news_articles": [
+            {
+                "source": "MarketWatch",
+                "title": "t",
+                "date": datetime.now(timezone.utc),
+                "content": "Reddit launches IPO at a valuation of up to $5.5 billion.",
+                "url": "https://example.com/mw",
+            }
+        ],
+    }
+    claims = extract_news_derived_claims(ho)
+    vals = [c.normalized_value for c in claims if c.claim_type == "valuation" and c.normalized_value is not None]
+    assert 5.5 in vals
+
+
 def test_extract_arm_negative_growth_percent() -> None:
     ho = {
         "sources_active": ["news_api"],

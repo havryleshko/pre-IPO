@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from backend.models.single_agent_result import NewsDerivedClaim
-from backend.services.news_filing_discrepancy import build_news_filing_discrepancies
+from backend.services.news_filing_discrepancy import (
+    _comparison_mode_for_claim,
+    _infer_filing_proceeds_millions,
+    _infer_filing_valuation_billions,
+    build_news_filing_discrepancies,
+)
 
 
 def test_valuation_discrepancy_arm_style() -> None:
@@ -47,3 +52,30 @@ def test_revenue_no_discrepancy_when_filing_matches_one_year() -> None:
     parser = {"financials": {"revenue": 804_000_000.0}}
     discs = build_news_filing_discrepancies(news, parser, {}, filing)
     assert discs == []
+
+
+def test_infer_valuation_billion_range_midpoint() -> None:
+    text = "We estimate our market capitalization will be between $20.9 billion and $23.7 billion."
+    v = _infer_filing_valuation_billions(text)
+    assert v is not None
+    assert abs(float(v) - 22.3) < 0.02
+
+
+def test_infer_proceeds_from_total_dollar_line() -> None:
+    assert _infer_filing_proceeds_millions("Total $420,000,000.") == 420.0
+    assert _infer_filing_proceeds_millions("Total $4,870,500,000.") == 4870.5
+
+
+def test_valuation_up_to_uses_approximate_comparison_mode() -> None:
+    claim = NewsDerivedClaim(
+        claim_id="v1",
+        claim_type="valuation",
+        normalized_value=5.5,
+        units="usd_billions",
+        period=None,
+        source="news_api",
+        evidence_quote="valuation of up to $5.5 billion",
+        article_url="u",
+        published_at=None,
+    )
+    assert _comparison_mode_for_claim(claim) == "approximate_match"
