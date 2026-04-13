@@ -47,9 +47,6 @@ class CompanyCohortRow:
     mandatory_present: int
     mandatory_total: int
     missing_fields: list[str]
-    projection_complete: bool
-    analog_companies_present: bool
-    projection_basis_present: bool
     predicted_pattern: str | None
     pattern_id: int | None
     reference_company_ticker: str | None
@@ -91,18 +88,6 @@ def _mandatory_presence(result: SingleAgentResult | None) -> tuple[int, int, lis
     return present, len(MANDATORY_FIELDS), missing_fields
 
 
-def _projection_complete(result: SingleAgentResult | None) -> bool:
-    projection = result.ipo_projection if result is not None else None
-    if projection is None:
-        return False
-    return (
-        projection.likely_decline_band_pct is not None
-        and projection.likely_time_to_trough_months is not None
-        and projection.rebound_probability_band is not None
-        and projection.likely_time_to_rebound_months is not None
-    )
-
-
 def _bucket_for_result(result: SingleAgentResult | None) -> str:
     if result is None or result.pattern_classification is None:
         return "unavailable"
@@ -133,7 +118,6 @@ def _company_row(
     result = data.analysis_result
     mandatory_present, mandatory_total, missing_fields = _mandatory_presence(result)
     reference_record = _reference_record_for_result(result, company_input)
-    projection = result.ipo_projection if result is not None else None
     row = CompanyCohortRow(
         cohort=cohort,
         input_company=company_input,
@@ -147,11 +131,8 @@ def _company_row(
         mandatory_present=mandatory_present,
         mandatory_total=mandatory_total,
         missing_fields=missing_fields,
-        projection_complete=_projection_complete(result),
-        analog_companies_present=bool(projection and projection.analog_companies),
-        projection_basis_present=bool(projection and _has_text(projection.projection_basis)),
         predicted_pattern=(result.reference_table_row.predicted_pattern if result and result.reference_table_row else None),
-        pattern_id=(projection.predicted_pattern_id if projection else None),
+        pattern_id=(result.pattern_classification.primary_pattern_id if result and result.pattern_classification else None),
         reference_company_ticker=(reference_record.company_ticker if reference_record else None),
     )
     return row, result, reference_record
@@ -165,18 +146,12 @@ def _cohort_summary(rows: list[CompanyCohortRow], reference_metrics: dict[str, A
     mandatory_present = sum(row.mandatory_present for row in rows)
     missing = Counter(field for row in rows for field in row.missing_fields)
     patterns = Counter(row.predicted_pattern for row in rows if row.predicted_pattern)
-    projection_complete = sum(1 for row in rows if row.projection_complete)
-    analog_present = sum(1 for row in rows if row.analog_companies_present)
-    basis_present = sum(1 for row in rows if row.projection_basis_present)
     return {
         "total_inputs": len(rows),
         "completed": completed,
         "reference_exact": reference_exact,
         "heuristic": heuristic,
         "mandatory_field_coverage": (mandatory_present / mandatory_total) if mandatory_total else 0.0,
-        "projection_completeness": (projection_complete / len(rows)) if rows else 0.0,
-        "analog_companies_presence": (analog_present / len(rows)) if rows else 0.0,
-        "projection_basis_presence": (basis_present / len(rows)) if rows else 0.0,
         "missing_field_distribution": dict(sorted(missing.items())),
         "pattern_distribution": dict(sorted(patterns.items())),
         "reference_metrics": reference_metrics,
@@ -207,9 +182,6 @@ def _markdown_report(
         lines.append(f"- `reference_exact`: `{summary['reference_exact']}`")
         lines.append(f"- `heuristic`: `{summary['heuristic']}`")
         lines.append(f"- mandatory_field_coverage: `{summary['mandatory_field_coverage']:.4f}`")
-        lines.append(f"- projection_completeness: `{summary['projection_completeness']:.4f}`")
-        lines.append(f"- analog_companies_presence: `{summary['analog_companies_presence']:.4f}`")
-        lines.append(f"- projection_basis_presence: `{summary['projection_basis_presence']:.4f}`")
         lines.append(f"- missing_field_distribution: `{summary['missing_field_distribution']}`")
         lines.append(f"- pattern_distribution: `{summary['pattern_distribution']}`")
         ref_metrics = summary["reference_metrics"]
@@ -219,25 +191,21 @@ def _markdown_report(
             lines.append("- canonical_reference_metrics:")
             lines.append(f"  - mandatory_field_coverage: `{ref_metrics['mandatory_field_coverage']:.4f}`")
             lines.append(f"  - pattern_accuracy: `{ref_metrics['pattern_accuracy']:.4f}`")
-            lines.append(f"  - projection_field_coverage: `{ref_metrics['projection_field_coverage']:.4f}`")
-            lines.append(f"  - decline_band_hit_rate: `{ref_metrics['decline_band_hit_rate']:.4f}`")
-            lines.append(f"  - rebound_signal_accuracy: `{ref_metrics['rebound_signal_accuracy']:.4f}`")
             lines.append(
                 f"  - failing_company_ids: `{', '.join(ref_metrics['failing_company_ids']) if ref_metrics['failing_company_ids'] else '-'}`"
             )
         lines.extend(
             [
                 "",
-                "| Input | Analysis ID | Status | Resolved ticker | Bucket | Mandatory | Missing fields | Projection complete | Pattern | Reference row |",
-                "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+                "| Input | Analysis ID | Status | Resolved ticker | Bucket | Mandatory | Missing fields | Pattern | Reference row |",
+                "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
             ]
         )
         for row in cohort_rows:
             lines.append(
                 f"| `{row.input_company}` | `{row.analysis_id}` | `{row.status}` | `{row.resolved_ticker or '-'}` | "
                 f"`{row.bucket}` | `{row.mandatory_present}/{row.mandatory_total}` | "
-                f"`{', '.join(row.missing_fields) if row.missing_fields else '-'}` | "
-                f"`{'yes' if row.projection_complete else 'no'}` | `{row.predicted_pattern or '-'}` | `{row.reference_company_ticker or '-'}` |"
+                f"`{', '.join(row.missing_fields) if row.missing_fields else '-'}` | `{row.predicted_pattern or '-'}` | `{row.reference_company_ticker or '-'}` |"
             )
         lines.append("")
     return "\n".join(lines) + "\n"
@@ -287,9 +255,6 @@ def main() -> None:
                 reference_metrics = {
                     "mandatory_field_coverage": metrics.mandatory_field_coverage,
                     "pattern_accuracy": metrics.pattern_accuracy,
-                    "projection_field_coverage": metrics.projection_field_coverage,
-                    "decline_band_hit_rate": metrics.decline_band_hit_rate,
-                    "rebound_signal_accuracy": metrics.rebound_signal_accuracy,
                     "failing_company_ids": metrics.failing_company_ids,
                 }
             summaries[cohort_name] = _cohort_summary(rows_by_cohort[cohort_name], reference_metrics)

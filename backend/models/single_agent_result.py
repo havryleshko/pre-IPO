@@ -80,29 +80,6 @@ class PatternClassification(BaseModel):
     source: Literal["reference_exact", "reference_analog", "heuristic"] = "heuristic"
 
 
-class NumericBand(BaseModel):
-    low: float | None = None
-    high: float | None = None
-    unit: str | None = None
-
-
-class MonthBand(BaseModel):
-    low: int | None = None
-    high: int | None = None
-    unit: Literal["months"] = "months"
-
-
-class IPOProjection(BaseModel):
-    predicted_pattern_id: int | None = None
-    pattern_confidence: Literal["high", "medium", "low"] = "medium"
-    likely_decline_band_pct: NumericBand | None = None
-    likely_time_to_trough_months: MonthBand | None = None
-    rebound_probability_band: NumericBand | None = None
-    likely_time_to_rebound_months: MonthBand | None = None
-    analog_companies: list[str] = Field(default_factory=list)
-    projection_basis: str | None = None
-
-
 class ReferenceTableRow(BaseModel):
     company_ticker: str
     industry_region: str
@@ -163,7 +140,6 @@ class SingleAgentResult(BaseModel):
     pre_ipo_thesis: PreIpoThesis | None = None
     realized_outcome: RealizedOutcome | None = None
     pattern_classification: PatternClassification | None = None
-    ipo_projection: IPOProjection | None = None
     reference_table_row: ReferenceTableRow | None = None
     claim_checks: list[ClaimCheck] = Field(default_factory=list)
     patterns: list[PatternFlag] = Field(default_factory=list)

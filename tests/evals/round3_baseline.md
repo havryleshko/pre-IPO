@@ -1,7 +1,7 @@
 # Round 3 eval baseline
 
-- Generated at: `2026-04-13T11:14:04.477979+00:00`
-- Git SHA: `a4db8ac8d2906afa8d1c1a87968a16145b81ede6`
+- Generated at: `2026-04-13T16:07:50.143130+00:00`
+- Git SHA: `1fdbb20404a6216a496cb8eb889354f97c6dca3f`
 - API base: `http://127.0.0.1:8000`
 
 ## Cohort: `round3_mandatory_gate_12`
@@ -11,25 +11,22 @@
 - `reference_exact`: `0`
 - `heuristic`: `12`
 - mandatory_field_coverage: `0.9881`
-- projection_completeness: `1.0000`
-- analog_companies_presence: `1.0000`
-- projection_basis_presence: `1.0000`
 - missing_field_distribution: `{'ipo_date': 1}`
 - pattern_distribution: `{'Pattern 11: IPO timing, macro regime, and post-IPO mean reversion': 7, 'Pattern 2: Steady compounders with conservative narratives': 4, 'Pattern 4: Profitless growth that eventually inflects': 1}`
 - canonical_reference_metrics: `not_applicable`
 
-| Input | Analysis ID | Status | Resolved ticker | Bucket | Mandatory | Missing fields | Projection complete | Pattern | Reference row |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `TER` | `5cc67d4c-0c10-4512-bdaa-a46fb013ce3e` | `completed` | `TER` | `heuristic` | `6/7` | `ipo_date` | `yes` | `Pattern 4: Profitless growth that eventually inflects` | `-` |
-| `SYM` | `7b66a2cc-56a3-40d9-aec2-94d1019f2a57` | `completed` | `SYM` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `LUNR` | `13307c7e-6d50-47f6-b75e-2d651fa1480b` | `completed` | `LUNR` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `KRMN` | `fc25d11b-9470-4bd5-8e86-d0176dd63e06` | `completed` | `KRMN` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
-| `RPRX` | `6787121c-fc5f-4fa4-97fc-814a856d5234` | `completed` | `RPRX` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `NOC` | `6482c3ee-0505-413e-b7a0-997f6dc3bfc8` | `completed` | `NOC` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
-| `INOD` | `96994c6a-98da-4671-9fcf-bc89435ed7fd` | `completed` | `INOD` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
-| `JOBY` | `d78676c9-c71b-4884-bdc7-a1f9d36f2e01` | `completed` | `JOBY` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `AIP` | `41e933b9-5f84-4dab-965b-64606b628583` | `completed` | `AIP` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `OPEN` | `52084334-4c7d-456e-9b71-cbf3c7190f49` | `completed` | `OPEN` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `DNA` | `d722cb46-8521-4fdf-9546-b3a0f416f0be` | `completed` | `DNA` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
-| `BIO` | `4de9ac41-80b1-43c0-99ab-a8104ad2e963` | `completed` | `BIO` | `heuristic` | `7/7` | `-` | `yes` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
+| Input | Analysis ID | Status | Resolved ticker | Bucket | Mandatory | Missing fields | Pattern | Reference row |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `TER` | `37042652-8758-42cc-a595-7d4f359a6fe9` | `completed` | `TER` | `heuristic` | `6/7` | `ipo_date` | `Pattern 4: Profitless growth that eventually inflects` | `-` |
+| `SYM` | `182f7d03-3dcb-45d5-ab92-1d1ffdc27e5f` | `completed` | `SYM` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `LUNR` | `8bfbf124-1d2b-446b-93e3-3ab3ff624248` | `completed` | `LUNR` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `KRMN` | `91b51205-d78d-4c32-a282-c3587d50fe6f` | `completed` | `KRMN` | `heuristic` | `7/7` | `-` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
+| `RPRX` | `8f3e971b-49c1-417c-849a-73c0e7fa9d4b` | `completed` | `RPRX` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `NOC` | `6c26486d-dad2-4253-b326-83ce77f875df` | `completed` | `NOC` | `heuristic` | `7/7` | `-` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
+| `INOD` | `8e02f861-c5e1-451f-9d80-91f32d62bccc` | `completed` | `INOD` | `heuristic` | `7/7` | `-` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
+| `JOBY` | `56cd2233-c567-4edd-8a2b-4d6424c48313` | `completed` | `JOBY` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `AIP` | `a4caf7ac-77c1-498f-9e77-30d69f5a6ee1` | `completed` | `AIP` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `OPEN` | `c8ff43d9-af10-499d-b794-4f9554ad1980` | `completed` | `OPEN` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `DNA` | `7a9e34c4-d1a5-4bbb-b436-63f716c56b2a` | `completed` | `DNA` | `heuristic` | `7/7` | `-` | `Pattern 11: IPO timing, macro regime, and post-IPO mean reversion` | `-` |
+| `BIO` | `26c70524-b741-4354-8379-12bfa9df2aa2` | `completed` | `BIO` | `heuristic` | `7/7` | `-` | `Pattern 2: Steady compounders with conservative narratives` | `-` |
 

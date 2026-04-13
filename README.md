@@ -5,7 +5,7 @@
 
 ## What is this
 
-You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured output contract**: mandatory reference-table fields (ticker, industry/region, IPO date, S-1 claims, long-term outcome, forecast error, pattern), an IPO performance projection (decline band, rebound probability, analog companies), outcome metrics from price history, and an optional Claude-written narrative. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
+You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured output contract**: mandatory reference-table fields (ticker, industry/region, IPO date, S-1 claims, long-term outcome, forecast error, pattern), pattern classification, outcome metrics from price history, and an optional Claude-written narrative. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
 
 ## How it works
 
@@ -18,7 +18,7 @@ Inside **`single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.m
 3. **Parse** prospectus-style fields from filings into structured parser output.
 4. **Scenario builder** produces scenario output (including price performance fed from IPO-window history).
 5. **NarrativeSynthesiser** calls **Anthropic** with a compact prompt; response is parsed into `NarrativeReport` or skipped on failure.
-6. **Persist** `final_report` as `SingleAgentResult`: reference table row (7 mandatory fields), pattern classification (id + source), IPO projection (decline band, rebound probability, analog companies), outcome metrics from price history, and optional narrative.
+6. **Persist** `final_report` as `SingleAgentResult`: reference table row (7 mandatory fields), pattern classification (id + source), outcome metrics from price history, and optional narrative.
 
 ## Prerequisites
 
@@ -111,12 +111,9 @@ pytest tests/ -v
 
 ## Eval status (current)
 
-- Output contract mandatory fields are stable enough to proceed with projection work:
+- Current product focus is the mandatory structured row plus pattern identification:
   - Round 3 (`tests/evals/round3_baseline.md`): `12/12` completed, mandatory coverage `0.9881` (single miss: `TER` missing `ipo_date`)
   - Round 2 reference-exact (`tests/evals/round2_baseline.md`): mandatory coverage `1.0000`, pattern accuracy `1.0000`
-- Projection quality is the remaining gap:
-  - Round 2 reference-exact decline band hit rate `0.3333`
-  - Round 2 reference-exact rebound signal accuracy `0.4444`
 
 Run eval baselines:
 

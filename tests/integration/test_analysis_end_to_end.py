@@ -157,7 +157,7 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     assert "outcome_metrics" in final_report
     assert "company_profile" in final_report
     assert "reference_table_row" in final_report
-    assert "ipo_projection" in final_report
+    assert "pattern_classification" in final_report
     assert "claim_checks" in final_report
     assert "patterns" in final_report
     outcome = final_report["outcome_metrics"]

@@ -81,5 +81,5 @@ This note captures Round 2 outcomes across locked cohorts and the incremental Ri
 ## Top 3 improvement candidates (next round)
 
 1. Investigate `LYC.ASX` failure path and decide whether symbol normalization for exchange suffixes should be added.
-2. Improve canonical projection calibration (`decline_band_hit_rate`, `rebound_signal_accuracy`) on the reference-exact cohort without changing canonical labels.
+2. Continue expanding canonical pattern coverage without changing canonical labels.
 3. Add one compact “cohort delta” appendix to automate before/after comparison in future runs.

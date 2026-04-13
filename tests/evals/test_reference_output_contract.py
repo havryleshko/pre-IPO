@@ -69,7 +69,7 @@ def test_build_output_contract_bundle_uses_reference_match() -> None:
     assert bundle.reference_table_row.company_ticker.startswith("Salesforce")
     assert bundle.reference_table_row.industry_region
     assert "Pattern 2" in bundle.reference_table_row.predicted_pattern
-    assert bundle.ipo_projection.predicted_pattern_id == 2
+    assert bundle.pattern_classification.primary_pattern_id == 2
     assert bundle.pattern_classification.source == "reference_exact"
 
 
@@ -92,7 +92,7 @@ def test_build_output_contract_bundle_falls_back_to_heuristics() -> None:
     assert bundle.reference_table_row.company_ticker == "UnknownCo (UNKN)"
     assert bundle.reference_table_row.key_pre_ipo_claims
     assert bundle.reference_table_row.forecast_error
-    assert bundle.ipo_projection.predicted_pattern_id is not None
+    assert bundle.pattern_classification.primary_pattern_id is not None
 
 
 def test_build_output_contract_bundle_uses_yahoo_industry_region_for_non_reference() -> None:

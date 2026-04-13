@@ -184,9 +184,6 @@ def _markdown_report(
     else:
         lines.append(f"- mandatory_field_coverage: `{reference_metrics['mandatory_field_coverage']:.4f}`")
         lines.append(f"- pattern_accuracy: `{reference_metrics['pattern_accuracy']:.4f}`")
-        lines.append(f"- projection_field_coverage: `{reference_metrics['projection_field_coverage']:.4f}`")
-        lines.append(f"- decline_band_hit_rate: `{reference_metrics['decline_band_hit_rate']:.4f}`")
-        lines.append(f"- rebound_signal_accuracy: `{reference_metrics['rebound_signal_accuracy']:.4f}`")
         lines.append(
             f"- failing_company_ids: `{', '.join(reference_metrics['failing_company_ids']) if reference_metrics['failing_company_ids'] else '-'}`"
         )
@@ -241,9 +238,6 @@ def main() -> None:
         reference_metrics = {
             "mandatory_field_coverage": metrics.mandatory_field_coverage,
             "pattern_accuracy": metrics.pattern_accuracy,
-            "projection_field_coverage": metrics.projection_field_coverage,
-            "decline_band_hit_rate": metrics.decline_band_hit_rate,
-            "rebound_signal_accuracy": metrics.rebound_signal_accuracy,
             "failing_company_ids": metrics.failing_company_ids,
         }
 

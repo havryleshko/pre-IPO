@@ -8,7 +8,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from tui.types import IPOProjection, OutcomeMetrics, SingleAgentResult
+from tui.types import OutcomeMetrics, SingleAgentResult
 
 _METRIC_LABEL: dict[str, str] = {
     "ipo_price": "IPO price",
@@ -62,40 +62,6 @@ def _derived_outcome_rows(om: OutcomeMetrics) -> list[tuple[str, str]]:
             drawdown = (om.current_price - om.peak_price) / om.peak_price * 100.0
             rows.append(("Current vs peak", f"{drawdown:+.1f}%"))
     return rows
-
-
-def _band_text(band: object) -> str:
-    if band is None:
-        return "—"
-    low = getattr(band, "low", None)
-    high = getattr(band, "high", None)
-    unit = getattr(band, "unit", None)
-    if low is None and high is None:
-        return "—"
-    suffix = ""
-    if unit == "percent":
-        suffix = "%"
-    elif unit == "months":
-        suffix = " months"
-    low_text = "—" if low is None else f"{low:g}{suffix}"
-    high_text = "—" if high is None else f"{high:g}{suffix}"
-    return f"{low_text} to {high_text}"
-
-
-def _projection_rows(projection: IPOProjection | None) -> list[tuple[str, str]]:
-    if projection is None:
-        return []
-    analogs = ", ".join(projection.analog_companies) if projection.analog_companies else "—"
-    return [
-        ("Predicted pattern id", str(projection.predicted_pattern_id) if projection.predicted_pattern_id is not None else "—"),
-        ("Pattern confidence", projection.pattern_confidence),
-        ("Likely decline band", _band_text(projection.likely_decline_band_pct)),
-        ("Time to trough", _band_text(projection.likely_time_to_trough_months)),
-        ("Rebound probability", _band_text(projection.rebound_probability_band)),
-        ("Time to rebound", _band_text(projection.likely_time_to_rebound_months)),
-        ("Analog companies", analogs),
-        ("Projection basis", projection.projection_basis or "—"),
-    ]
 
 
 def _mandatory_completeness(result: SingleAgentResult) -> str:
@@ -165,23 +131,11 @@ def _append_reference_row_plain(lines: list[str], result: SingleAgentResult) -> 
     lines.append("")
 
 
-def _append_projection_plain(lines: list[str], result: SingleAgentResult) -> None:
-    rows = _projection_rows(result.ipo_projection)
-    if not rows:
-        return
-    lines.append("IPO projection")
-    col_w = max(len(label) for label, _ in rows)
-    for label, value in rows:
-        lines.append(f"  {label:<{col_w}}  {value}")
-    lines.append("")
-
-
 def render_result_plain(result: SingleAgentResult) -> str:
     lines: list[str] = []
     lines.append(result.company_name)
     lines.append("")
     _append_reference_row_plain(lines, result)
-    _append_projection_plain(lines, result)
 
     om = result.outcome_metrics
     if om is not None:
@@ -266,7 +220,7 @@ def render_result_plain(result: SingleAgentResult) -> str:
         lines.append("")
 
     if result.prediction_claims:
-        lines.append("S-1 projections")
+        lines.append("Pre-IPO claims")
         for c in result.prediction_claims[:6]:
             lines.append(f"  [{c.claim_type}] {c.prediction_text[:100]}")
         lines.append("")
@@ -287,7 +241,9 @@ def render_result_cli(result: SingleAgentResult) -> str:
     summary.add_column("Mandatory fields")
     summary.add_column("Delivery direction")
     summary.add_row(
-        str(result.ipo_projection.predicted_pattern_id) if result.ipo_projection and result.ipo_projection.predicted_pattern_id else "—",
+        str(result.pattern_classification.primary_pattern_id)
+        if result.pattern_classification and result.pattern_classification.primary_pattern_id
+        else "—",
         result.pattern_classification.source if result.pattern_classification else "—",
         _mandatory_completeness(result),
         _delivery_direction(result),
@@ -307,15 +263,6 @@ def render_result_cli(result: SingleAgentResult) -> str:
         ref_table.add_row("Forecast Error", row.forecast_error)
         ref_table.add_row("Predicted Pattern (pre-IPO basis)", row.predicted_pattern)
         console.print(Panel(ref_table, title="Reference table row", box=box.ROUNDED))
-
-    projection_rows = _projection_rows(result.ipo_projection)
-    if projection_rows:
-        proj_table = Table(box=box.SIMPLE_HEAVY, show_header=True)
-        proj_table.add_column("Projection field", style="bold")
-        proj_table.add_column("Value", overflow="fold")
-        for label, value in projection_rows:
-            proj_table.add_row(label, value)
-        console.print(Panel(proj_table, title="IPO projection", box=box.ROUNDED))
 
     if result.outcome_metrics is not None:
         outcome_table = Table(box=box.SIMPLE_HEAVY, show_header=True)
@@ -387,16 +334,6 @@ def render_result_markdown(result: SingleAgentResult) -> str:
         lines.append(f"| Long-term Outcome (IPO to Apr 2026) | {row.long_term_outcome} |")
         lines.append(f"| Forecast Error | {row.forecast_error} |")
         lines.append(f"| Predicted Pattern (pre-IPO basis) | {row.predicted_pattern} |")
-        lines.append("")
-
-    projection_rows = _projection_rows(result.ipo_projection)
-    if projection_rows:
-        lines.append("## IPO projection")
-        lines.append("")
-        lines.append("| field | value |")
-        lines.append("|---|---|")
-        for label, value in projection_rows:
-            lines.append(f"| {label} | {value} |")
         lines.append("")
 
     om = result.outcome_metrics
@@ -489,7 +426,7 @@ def render_result_markdown(result: SingleAgentResult) -> str:
         lines.append("")
 
     if result.prediction_claims:
-        lines.append("## S-1 projections")
+        lines.append("## Pre-IPO claims")
         lines.append("")
         for c in result.prediction_claims[:6]:
             lines.append(f"- `[{c.claim_type}]` {c.prediction_text[:120]}")

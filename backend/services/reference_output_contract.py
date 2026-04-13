@@ -13,9 +13,6 @@ from pydantic import BaseModel, Field
 from backend.models.single_agent_result import (
     ClaimCheck,
     CompanyProfile,
-    IPOProjection,
-    MonthBand,
-    NumericBand,
     OutcomeMetrics,
     PatternClassification,
     PreIpoThesis,
@@ -51,7 +48,6 @@ class OutputContractBundle(BaseModel):
     pre_ipo_thesis: PreIpoThesis
     realized_outcome: RealizedOutcome
     pattern_classification: PatternClassification
-    ipo_projection: IPOProjection
     reference_table_row: ReferenceTableRow
 
 
@@ -253,34 +249,6 @@ def _pattern_label_for_id(pattern_id: int) -> str:
     return labels.get(pattern_id, f"Pattern {pattern_id}: heuristic classification")
 
 
-def _projection_defaults(pattern_id: int) -> tuple[NumericBand, MonthBand, NumericBand, MonthBand, str]:
-    defaults: dict[int, tuple[tuple[float, float], tuple[int, int], tuple[float, float], tuple[int, int], str]] = {
-        1: ((-80.0, -30.0), (3, 24), (15.0, 40.0), (12, 36), "Pattern 1 analogs usually de-rate sharply before any durable rebound."),
-        2: ((-25.0, -5.0), (1, 12), (60.0, 85.0), (6, 24), "Pattern 2 analogs usually see shallower post-IPO drawdowns and higher rebound odds."),
-        3: ((-35.0, -10.0), (3, 18), (35.0, 65.0), (12, 30), "Pattern 3 analogs tend to mean-revert after strong debuts."),
-        4: ((-45.0, -15.0), (6, 24), (45.0, 80.0), (12, 36), "Pattern 4 analogs often need time for profitability validation before rerating."),
-        5: ((-60.0, -25.0), (6, 24), (20.0, 45.0), (18, 36), "Pattern 5 cohorts usually show broad de-rating with only selective recoveries."),
-        6: ((-95.0, -50.0), (3, 24), (5.0, 20.0), (24, 60), "Pattern 6 analogs have the highest collapse risk and the weakest rebound odds."),
-        7: ((-20.0, -5.0), (1, 9), (55.0, 80.0), (6, 18), "Pattern 7 analogs with strong customer metrics tend to recover faster."),
-        8: ((-35.0, -10.0), (3, 18), (35.0, 60.0), (12, 24), "Pattern 8 outcomes depend on whether prospectus detail translated into credible execution."),
-        9: ((-30.0, -10.0), (3, 12), (30.0, 55.0), (12, 24), "Pattern 9 analogs are sensitive to changing attention and narrative support."),
-        10: ((-35.0, -10.0), (3, 9), (35.0, 60.0), (9, 24), "Pattern 10 analogs often trough near insider liquidity events."),
-        11: ((-55.0, -20.0), (6, 24), (25.0, 55.0), (12, 30), "Pattern 11 analogs are heavily shaped by the listing regime and subsequent macro reset."),
-        12: ((-50.0, -20.0), (6, 24), (20.0, 50.0), (18, 36), "Pattern 12 is more useful for downside screening than for upside forecasting."),
-    }
-    decline, trough, rebound_prob, rebound_time, basis = defaults.get(
-        pattern_id,
-        ((-40.0, -15.0), (6, 18), (30.0, 60.0), (12, 24), "Fallback projection from mixed analog evidence."),
-    )
-    return (
-        NumericBand(low=decline[0], high=decline[1], unit="percent"),
-        MonthBand(low=trough[0], high=trough[1]),
-        NumericBand(low=rebound_prob[0], high=rebound_prob[1], unit="percent"),
-        MonthBand(low=rebound_time[0], high=rebound_time[1]),
-        basis,
-    )
-
-
 def _derived_claim_text(parser_output: dict[str, Any], prediction_claims: list[PredictionClaim]) -> list[str]:
     claims: list[str] = []
     business_model = str(parser_output.get("business_model") or "").strip()
@@ -436,19 +404,6 @@ def build_output_contract_bundle(
             secondary_pattern_labels=reference.ambiguous_patterns,
             source="reference_exact",
         )
-        decline_band, trough_band, rebound_prob, rebound_time, basis = _projection_defaults(
-            reference.predicted_pattern_id or 12
-        )
-        projection = IPOProjection(
-            predicted_pattern_id=reference.predicted_pattern_id,
-            pattern_confidence=pattern_classification.confidence,
-            likely_decline_band_pct=decline_band,
-            likely_time_to_trough_months=trough_band,
-            rebound_probability_band=rebound_prob,
-            likely_time_to_rebound_months=rebound_time,
-            analog_companies=pattern_classification.analog_companies,
-            projection_basis=basis,
-        )
         table_row = ReferenceTableRow(
             company_ticker=reference.company_ticker,
             industry_region=reference.industry_region or "unavailable",
@@ -463,7 +418,6 @@ def build_output_contract_bundle(
             pre_ipo_thesis=pre_ipo_thesis,
             realized_outcome=realized_outcome,
             pattern_classification=pattern_classification,
-            ipo_projection=projection,
             reference_table_row=table_row,
         )
 
@@ -485,7 +439,6 @@ def build_output_contract_bundle(
         comparable_tickers=comparable_tickers,
     )
     pattern_label = _pattern_label_for_id(heuristic_pattern_id)
-    decline_band, trough_band, rebound_prob, rebound_time, basis = _projection_defaults(heuristic_pattern_id)
     table_company = f"{company_name} ({ticker})" if ticker else company_name
     company_profile = CompanyProfile(
         issuer_name=company_name,
@@ -516,16 +469,6 @@ def build_output_contract_bundle(
         analog_companies=[record.company_ticker for record in analog_records[:3]],
         source="heuristic",
     )
-    projection = IPOProjection(
-        predicted_pattern_id=heuristic_pattern_id,
-        pattern_confidence="medium",
-        likely_decline_band_pct=decline_band,
-        likely_time_to_trough_months=trough_band,
-        rebound_probability_band=rebound_prob,
-        likely_time_to_rebound_months=rebound_time,
-        analog_companies=pattern_classification.analog_companies,
-        projection_basis=basis,
-    )
     table_row = ReferenceTableRow(
         company_ticker=table_company,
         industry_region=industry_region,
@@ -540,6 +483,5 @@ def build_output_contract_bundle(
         pre_ipo_thesis=pre_ipo_thesis,
         realized_outcome=realized_outcome,
         pattern_classification=pattern_classification,
-        ipo_projection=projection,
         reference_table_row=table_row,
     )

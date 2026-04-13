@@ -501,7 +501,6 @@ class SingleAgentToolCaller:
                 pre_ipo_thesis=output_contract.pre_ipo_thesis,
                 realized_outcome=output_contract.realized_outcome,
                 pattern_classification=output_contract.pattern_classification,
-                ipo_projection=output_contract.ipo_projection,
                 reference_table_row=output_contract.reference_table_row,
                 claim_checks=claim_checks,
                 patterns=patterns_out,
