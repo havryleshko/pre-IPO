@@ -96,10 +96,14 @@ def _ipo_history_positive() -> dict:
         "ipo_price": 50.0,
         "current_price": 55.0,
         "peak_price": 60.0,
+        "peak_date": "2023-10-10",
         "trough_price": 45.0,
+        "trough_date": "2023-09-20",
         "performance_since_ipo_pct": 10.0,
         "lock_up_cliff_date": None,
         "price_at_lock_up_cliff": 52.0,
+        "recovered_to_ipo_date": "2023-10-01",
+        "recovered_to_peak_date": "2023-10-10",
     }
 
 
@@ -108,10 +112,14 @@ def _ipo_history_cart() -> dict:
         "ipo_price": 30.0,
         "current_price": 22.0,
         "peak_price": 35.0,
+        "peak_date": "2023-09-20",
         "trough_price": 20.0,
+        "trough_date": "2023-12-01",
         "performance_since_ipo_pct": -20.0,
         "lock_up_cliff_date": None,
         "price_at_lock_up_cliff": 24.0,
+        "recovered_to_ipo_date": None,
+        "recovered_to_peak_date": None,
     }
 
 
@@ -147,8 +155,14 @@ async def test_full_pipeline_happy_path_produces_three_scenarios() -> None:
     assert "prediction_claims" in final_report
     assert "filing_facts" in final_report
     assert "outcome_metrics" in final_report
+    assert "company_profile" in final_report
+    assert "reference_table_row" in final_report
+    assert "ipo_projection" in final_report
     assert "claim_checks" in final_report
     assert "patterns" in final_report
+    outcome = final_report["outcome_metrics"]
+    assert outcome["peak_date"] == "2023-10-10"
+    assert outcome["trough_date"] == "2023-09-20"
 
 
 @pytest.mark.asyncio

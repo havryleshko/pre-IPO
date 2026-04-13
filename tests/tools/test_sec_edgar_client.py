@@ -260,10 +260,60 @@ def test_resolve_ticker_from_input_accepts_direct_ticker() -> None:
 
     with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
         "backend.tools.sec_edgar_client._fetch_json", return_value=ticker_payload
-    ):
+    ) as fetch_json:
         ticker = asyncio.run(resolve_ticker_from_input("RKLB"))
 
     assert ticker == "RKLB"
+    fetch_json.assert_not_called()
+
+
+def test_resolve_ticker_from_input_passes_through_pl_without_sec_name_resolution() -> None:
+    async def _immediate_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
+        "backend.tools.sec_edgar_client._fetch_json"
+    ) as fetch_json:
+        ticker = asyncio.run(resolve_ticker_from_input("PL"))
+
+    assert ticker == "PL"
+    fetch_json.assert_not_called()
+
+
+def test_resolve_ticker_from_input_passes_through_exchange_qualified_symbol() -> None:
+    async def _immediate_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
+        "backend.tools.sec_edgar_client._fetch_json"
+    ) as fetch_json:
+        barc = asyncio.run(resolve_ticker_from_input("BARC.L"))
+        lyc = asyncio.run(resolve_ticker_from_input("LYC.ASX"))
+
+    assert barc == "BARC.L"
+    assert lyc == "LYC.ASX"
+    fetch_json.assert_not_called()
+
+
+def test_resolve_ticker_from_input_barclays_still_uses_name_resolution() -> None:
+    async def _immediate_to_thread(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    ticker_payload = {
+        "0": {"title": "Barclays PLC", "ticker": "BCS", "cik_str": 3120709},
+    }
+
+    def _mock_issuer_lookup(cik: str) -> str:
+        return {"0003120709": "Barclays PLC"}[cik]
+
+    with patch("backend.tools.sec_edgar_client.asyncio.to_thread", new=_immediate_to_thread), patch(
+        "backend.tools.sec_edgar_client._fetch_json", return_value=ticker_payload
+    ), patch(
+        "backend.tools.sec_edgar_client._resolve_conformed_issuer_name", side_effect=_mock_issuer_lookup
+    ):
+        ticker = asyncio.run(resolve_ticker_from_input("Barclays"))
+
+    assert ticker == "BCS"
 
 
 def test_fetch_sec_edgar_accepts_direct_ticker_input() -> None:

@@ -7,18 +7,19 @@ from backend.tools.yfinance_client import (
     _fetch_ipo_price_history_sync,
     _is_plausible_ipo_date,
     _resolve_ipo_date_for_ticker_sync,
+    _resolve_symbol,
 )
 
 
 class TestIsPlausibleIpoDate:
-    def test_rejects_dates_before_2000(self) -> None:
-        assert _is_plausible_ipo_date(date(1999, 12, 31)) is False
+    def test_rejects_dates_before_1980(self) -> None:
+        assert _is_plausible_ipo_date(date(1979, 12, 31)) is False
 
-    def test_rejects_1980s_date(self) -> None:
-        assert _is_plausible_ipo_date(date(1985, 6, 15)) is False
+    def test_accepts_1980s_date(self) -> None:
+        assert _is_plausible_ipo_date(date(1985, 6, 15)) is True
 
     def test_accepts_boundary_date(self) -> None:
-        assert _is_plausible_ipo_date(date(2000, 1, 1)) is True
+        assert _is_plausible_ipo_date(date(1980, 1, 1)) is True
 
     def test_accepts_modern_date(self) -> None:
         assert _is_plausible_ipo_date(date(2021, 5, 20)) is True
@@ -47,14 +48,14 @@ class TestResolveIpoDateForTickerSync:
             result = _resolve_ipo_date_for_ticker_sync("NVDA")
         assert result == date(2021, 5, 20)
 
-    def test_rejects_implausible_ipoDate_string_and_falls_through(self) -> None:
+    def test_accepts_1980s_ipoDate_string(self) -> None:
         hist_mock = MagicMock()
         hist_mock.empty = True
         yf = self._make_yf({"ipoDate": "1985-01-01"})
         yf.Ticker.return_value.history.return_value = hist_mock
         with patch("importlib.import_module", return_value=yf):
             result = _resolve_ipo_date_for_ticker_sync("SPY")
-        assert result is None
+        assert result == date(1985, 1, 1)
 
     def test_returns_plausible_date_from_firstTradeDateEpochUtc(self) -> None:
         epoch = int(datetime(2019, 6, 7, tzinfo=timezone.utc).timestamp())
@@ -63,7 +64,7 @@ class TestResolveIpoDateForTickerSync:
             result = _resolve_ipo_date_for_ticker_sync("CRWD")
         assert result == date(2019, 6, 7)
 
-    def test_rejects_implausible_firstTradeDateEpochUtc(self) -> None:
+    def test_accepts_1990s_firstTradeDateEpochUtc(self) -> None:
         epoch = int(datetime(1993, 1, 22, tzinfo=timezone.utc).timestamp())
         hist_mock = MagicMock()
         hist_mock.empty = True
@@ -71,7 +72,7 @@ class TestResolveIpoDateForTickerSync:
         yf.Ticker.return_value.history.return_value = hist_mock
         with patch("importlib.import_module", return_value=yf):
             result = _resolve_ipo_date_for_ticker_sync("MSFT")
-        assert result is None
+        assert result == date(1993, 1, 22)
 
     def test_falls_back_to_history_and_accepts_plausible_date(self) -> None:
         first_date = datetime(2020, 9, 16, tzinfo=timezone.utc)
@@ -84,7 +85,7 @@ class TestResolveIpoDateForTickerSync:
             result = _resolve_ipo_date_for_ticker_sync("SNOW")
         assert result == date(2020, 9, 16)
 
-    def test_falls_back_to_history_and_rejects_implausible_date(self) -> None:
+    def test_falls_back_to_history_and_accepts_1980s_date(self) -> None:
         first_date = datetime(1985, 3, 13, tzinfo=timezone.utc)
         hist_mock = MagicMock()
         hist_mock.empty = False
@@ -93,12 +94,94 @@ class TestResolveIpoDateForTickerSync:
         yf.Ticker.return_value.history.return_value = hist_mock
         with patch("importlib.import_module", return_value=yf):
             result = _resolve_ipo_date_for_ticker_sync("OLD")
-        assert result is None
+        assert result == date(1985, 3, 13)
 
     def test_empty_ticker_returns_none(self) -> None:
         with patch("importlib.import_module", return_value=MagicMock()):
             result = _resolve_ipo_date_for_ticker_sync("  ")
         assert result is None
+
+    def test_maps_asx_suffix_to_ax_for_yahoo_ticker(self) -> None:
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ticker_mock.info = {"ipoDate": "2021-05-20"}
+        hist_mock = MagicMock()
+        hist_mock.empty = True
+        ticker_mock.history.return_value = hist_mock
+        yf.Ticker.return_value = ticker_mock
+        with patch("importlib.import_module", return_value=yf):
+            result = _resolve_ipo_date_for_ticker_sync("LYC.ASX")
+        assert result == date(2021, 5, 20)
+        yf.Ticker.assert_called_with("LYC.AX")
+
+
+class TestResolveSymbol:
+    def test_explicit_exchange_symbol_skips_search_when_info_validates(self) -> None:
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ticker_mock.info = {"symbol": "BARC.L", "quoteType": "EQUITY"}
+        yf.Ticker.return_value = ticker_mock
+
+        sym = _resolve_symbol(yf, "BARC.L")
+
+        assert sym == "BARC.L"
+        yf.Search.assert_not_called()
+
+    def test_explicit_plain_ticker_skips_search_when_info_validates(self) -> None:
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ticker_mock.info = {"symbol": "PL", "quoteType": "EQUITY", "shortName": "Planet Labs"}
+        yf.Ticker.return_value = ticker_mock
+
+        sym = _resolve_symbol(yf, "PL")
+
+        assert sym == "PL"
+        yf.Search.assert_not_called()
+
+    def test_explicit_symbol_falls_back_to_search_when_info_empty(self) -> None:
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ticker_mock.info = {}
+        yf.Ticker.return_value = ticker_mock
+        search = MagicMock()
+        search.quotes = [{"symbol": "PL", "quoteType": "EQUITY"}]
+        yf.Search.return_value = search
+
+        sym = _resolve_symbol(yf, "PL")
+
+        assert sym == "PL"
+        yf.Search.assert_called_once()
+
+    def test_company_name_uses_search(self) -> None:
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ticker_mock.info = {}
+        yf.Ticker.return_value = ticker_mock
+        search = MagicMock()
+        search.quotes = [{"symbol": "BCS", "quoteType": "EQUITY"}]
+        yf.Search.return_value = search
+
+        sym = _resolve_symbol(yf, "Barclays PLC")
+
+        assert sym == "BCS"
+
+    def test_explicit_asx_suffix_tries_ax_alias(self) -> None:
+        yf = MagicMock()
+
+        def _ticker_side_effect(sym: str) -> MagicMock:
+            m = MagicMock()
+            if sym == "LYC.ASX":
+                m.info = {}
+            else:
+                m.info = {"symbol": "LYC.AX", "quoteType": "EQUITY"}
+            return m
+
+        yf.Ticker.side_effect = _ticker_side_effect
+
+        sym = _resolve_symbol(yf, "LYC.ASX")
+
+        assert sym == "LYC.AX"
+        yf.Search.assert_not_called()
 
 
 class TestFetchIpoPriceHistorySync:

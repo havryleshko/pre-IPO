@@ -8,13 +8,21 @@ from tui.export import export_all
 from tui.render import render_result_markdown, render_result_plain
 from tui.types import (
     ClaimCheck,
+    CompanyProfile,
     FilingFact,
+    IPOProjection,
+    MonthBand,
     NarrativeReport,
+    NumericBand,
     NewsDerivedClaim,
     NewsFilingDiscrepancy,
     OutcomeMetrics,
     PatternFlag,
+    PatternClassification,
+    PreIpoThesis,
     PredictionClaim,
+    RealizedOutcome,
+    ReferenceTableRow,
     SingleAgentResult,
 )
 
@@ -50,6 +58,43 @@ def _sample_result() -> SingleAgentResult:
             current_price=12.5,
             performance_since_ipo_pct=25.0,
         ),
+        company_profile=CompanyProfile(
+            issuer_name="TestCo",
+            ticker="TCO",
+            company_ticker="TestCo (TCO)",
+            industry_region="Software / US",
+            ipo_date=datetime(2024, 1, 1, tzinfo=timezone.utc).date(),
+            listing_type="primary",
+        ),
+        pre_ipo_thesis=PreIpoThesis(key_pre_ipo_claims=["Subscription software growth story."]),
+        realized_outcome=RealizedOutcome(
+            long_term_outcome="IPO $10; current $12.50; post-IPO performance positive.",
+            forecast_error="Post-IPO results broadly aligned with the main S-1 framing.",
+        ),
+        pattern_classification=PatternClassification(
+            primary_pattern_id=2,
+            primary_pattern_label="Pattern 2: Steady compounders with conservative narratives",
+            analog_companies=["Atlassian (TEAM)", "Salesforce (CRM)"],
+            source="reference_exact",
+        ),
+        ipo_projection=IPOProjection(
+            predicted_pattern_id=2,
+            likely_decline_band_pct=NumericBand(low=-25.0, high=-5.0, unit="percent"),
+            likely_time_to_trough_months=MonthBand(low=1, high=12),
+            rebound_probability_band=NumericBand(low=60.0, high=85.0, unit="percent"),
+            likely_time_to_rebound_months=MonthBand(low=6, high=24),
+            analog_companies=["Atlassian (TEAM)", "Salesforce (CRM)"],
+            projection_basis="Pattern 2 analogs usually see shallower drawdowns.",
+        ),
+        reference_table_row=ReferenceTableRow(
+            company_ticker="TestCo (TCO)",
+            industry_region="Software / US",
+            ipo_date="2024-01-01",
+            key_pre_ipo_claims="Subscription software growth story.",
+            long_term_outcome="IPO $10; current $12.50; post-IPO performance positive.",
+            forecast_error="Post-IPO results broadly aligned with the main S-1 framing.",
+            predicted_pattern="Pattern 2: Steady compounders with conservative narratives",
+        ),
         claim_checks=[
             ClaimCheck(
                 claim_id="c1",
@@ -66,6 +111,10 @@ def _sample_result() -> SingleAgentResult:
 def test_render_plain_contains_sections() -> None:
     s = render_result_plain(_sample_result())
     assert "TestCo" in s
+    assert "Reference table row" in s
+    assert "Company (Ticker)" in s
+    assert "Industry / Region" in s
+    assert "IPO projection" in s
     assert "Outcome" in s
     assert "IPO price" in s
     assert "Pre-IPO story" in s
@@ -83,11 +132,14 @@ def test_render_plain_fallback_without_narrative() -> None:
     assert "S-1 claim checks" in s
     assert "Patterns" in s
     assert "Pre-IPO story" not in s
+    assert s.index("S-1 claim checks") < s.index("Patterns")
 
 
 def test_render_markdown_contains_headers() -> None:
     s = render_result_markdown(_sample_result())
     assert s.startswith("# TestCo")
+    assert "## Reference table row" in s
+    assert "## IPO projection" in s
     assert "## Outcome" in s
     assert "## Pre-IPO story" in s
     assert "## Post-IPO grounding" in s
@@ -102,6 +154,7 @@ def test_render_markdown_fallback_without_narrative() -> None:
     s = render_result_markdown(result)
     assert "## S-1 claim checks" in s
     assert "## Pre-IPO story" not in s
+    assert s.index("## S-1 claim checks") < s.index("## Patterns")
 
 
 def test_export_all_writes_three_files(tmp_path: Path) -> None:
@@ -150,6 +203,25 @@ def test_tui_types_parse_news_fields() -> None:
     payload = {
         "company_name": "AcmeCo",
         "generated_at": "2024-01-01T00:00:00",
+        "reference_table_row": {
+            "company_ticker": "AcmeCo (ACME)",
+            "industry_region": "Fintech / US",
+            "ipo_date": "2024-01-01",
+            "key_pre_ipo_claims": "Fintech growth story.",
+            "long_term_outcome": "IPO $10; current $8.",
+            "forecast_error": "Growth lagged the pre-IPO framing.",
+            "predicted_pattern": "Pattern 1: Hyped growth story, weak long-run performance",
+        },
+        "ipo_projection": {
+            "predicted_pattern_id": 1,
+            "pattern_confidence": "medium",
+            "likely_decline_band_pct": {"low": -80.0, "high": -30.0, "unit": "percent"},
+            "likely_time_to_trough_months": {"low": 3, "high": 24, "unit": "months"},
+            "rebound_probability_band": {"low": 15.0, "high": 40.0, "unit": "percent"},
+            "likely_time_to_rebound_months": {"low": 12, "high": 36, "unit": "months"},
+            "analog_companies": ["Snap (SNAP)"],
+            "projection_basis": "Pattern 1 analogs usually de-rate sharply.",
+        },
         "news_derived_claims": [
             {
                 "claim_id": "nc1",
@@ -181,4 +253,8 @@ def test_tui_types_parse_news_fields() -> None:
     assert r.news_derived_claims[0].normalized_value == 65.0
     assert len(r.news_filing_discrepancies) == 1
     assert r.news_filing_discrepancies[0].discrepancy_id == "d1"
+    assert r.reference_table_row is not None
+    assert r.reference_table_row.company_ticker == "AcmeCo (ACME)"
+    assert r.ipo_projection is not None
+    assert r.ipo_projection.predicted_pattern_id == 1
 

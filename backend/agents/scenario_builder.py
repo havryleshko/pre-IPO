@@ -410,22 +410,42 @@ class ScenarioBuilder:
             ipo_price=self._to_float(raw.get("ipo_price")),
             current_price=self._to_float(raw.get("current_price")),
             peak_price=self._to_float(raw.get("peak_price")),
+            peak_date=self._coerce_date(raw.get("peak_date")),
             trough_price=self._to_float(raw.get("trough_price")),
+            trough_date=self._coerce_date(raw.get("trough_date")),
             performance_since_ipo_pct=self._to_float(raw.get("performance_since_ipo_pct")),
             lock_up_cliff_date=lock_parsed,
             price_at_lock_up_cliff=self._to_float(raw.get("price_at_lock_up_cliff")),
+            recovered_to_ipo_date=self._coerce_date(raw.get("recovered_to_ipo_date")),
+            recovered_to_peak_date=self._coerce_date(raw.get("recovered_to_peak_date")),
         )
         if (
             pp.ipo_price is None
             and pp.current_price is None
             and pp.peak_price is None
+            and pp.peak_date is None
             and pp.trough_price is None
+            and pp.trough_date is None
             and pp.performance_since_ipo_pct is None
             and pp.price_at_lock_up_cliff is None
             and pp.lock_up_cliff_date is None
+            and pp.recovered_to_ipo_date is None
+            and pp.recovered_to_peak_date is None
         ):
             return None
         return pp
+
+    def _coerce_date(self, value: Any) -> date | None:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                return date.fromisoformat(value.strip()[:10])
+            except ValueError:
+                return None
+        return None
 
     def _hydrate_s1_and_actuals(
         self, parser_output: dict[str, Any]

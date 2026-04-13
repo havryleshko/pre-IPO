@@ -36,10 +36,14 @@ class PricePerformance(BaseModel):
     ipo_price: float | None = None
     current_price: float | None = None
     peak_price: float | None = None
+    peak_date: date | None = None
     trough_price: float | None = None
+    trough_date: date | None = None
     performance_since_ipo_pct: float | None = None
     lock_up_cliff_date: date | None = None
     price_at_lock_up_cliff: float | None = None
+    recovered_to_ipo_date: date | None = None
+    recovered_to_peak_date: date | None = None
 
 
 class PatternFlag(BaseModel):

@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-04-13T08:52:36.491518+00:00",
+  "git_sha": "a4db8ac8d2906afa8d1c1a87968a16145b81ede6",
+  "api_base": "http://127.0.0.1:8000",
+  "companies": [
+    "RKLB",
+    "PL",
+    "IONS",
+    "COHR",
+    "IOVA",
+    "QBTS",
+    "MP",
+    "ISRG",
+    "LHX"
+  ],
+  "rows": [
+    {
+      "input_company": "RKLB",
+      "analysis_id": "d3b2393b-9dd7-4553-b7ca-d2e47f74b9aa",
+      "status": "completed",
+      "company_name": "RKLB",
+      "resolved_ticker": "RKLB",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 11: IPO timing, macro regime, and post-IPO mean reversion",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "PL",
+      "analysis_id": "de18c449-f191-4c4a-b4eb-ae45c248a25e",
+      "status": "completed",
+      "company_name": "PL",
+      "resolved_ticker": "PL",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 11: IPO timing, macro regime, and post-IPO mean reversion",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "IONS",
+      "analysis_id": "19ba3d17-81fc-451b-a4f0-1eb47c71966b",
+      "status": "completed",
+      "company_name": "IONS",
+      "resolved_ticker": "IONS",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 6,
+      "mandatory_total": 7,
+      "missing_fields": [
+        "ipo_date"
+      ],
+      "predicted_pattern": "Pattern 4: Profitless growth that eventually inflects",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "COHR",
+      "analysis_id": "2c8aec6b-1ea4-46be-b8c3-b7513405297b",
+      "status": "completed",
+      "company_name": "COHR",
+      "resolved_ticker": "COHR",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 6,
+      "mandatory_total": 7,
+      "missing_fields": [
+        "ipo_date"
+      ],
+      "predicted_pattern": "Pattern 4: Profitless growth that eventually inflects",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "IOVA",
+      "analysis_id": "c00e1836-790f-4d02-abac-fdb6cf4993df",
+      "status": "completed",
+      "company_name": "IOVA",
+      "resolved_ticker": "IOVA",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 1: Hyped growth story, weak long-run performance",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "QBTS",
+      "analysis_id": "e6c9a0dd-9acd-4dd2-88ff-59dad1ff36b6",
+      "status": "completed",
+      "company_name": "QBTS",
+      "resolved_ticker": "QBTS",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 11: IPO timing, macro regime, and post-IPO mean reversion",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "MP",
+      "analysis_id": "728de4cb-94aa-4646-ad1e-4f99f6ebe21e",
+      "status": "completed",
+      "company_name": "MP",
+      "resolved_ticker": "MP",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 11: IPO timing, macro regime, and post-IPO mean reversion",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "ISRG",
+      "analysis_id": "d02b9fd3-d353-42fd-8ee2-bf803780fff3",
+      "status": "completed",
+      "company_name": "ISRG",
+      "resolved_ticker": "ISRG",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 7,
+      "mandatory_total": 7,
+      "missing_fields": [],
+      "predicted_pattern": "Pattern 2: Steady compounders with conservative narratives",
+      "reference_company_ticker": null
+    },
+    {
+      "input_company": "LHX",
+      "analysis_id": "69610f21-2ac3-4e68-9d9f-dc88626ed065",
+      "status": "completed",
+      "company_name": "LHX",
+      "resolved_ticker": "LHX",
+      "bucket": "heuristic",
+      "row_source": "heuristic",
+      "industry_region_source": "yahoo_info",
+      "mandatory_present": 6,
+      "mandatory_total": 7,
+      "missing_fields": [
+        "ipo_date"
+      ],
+      "predicted_pattern": "Pattern 4: Profitless growth that eventually inflects",
+      "reference_company_ticker": null
+    }
+  ],
+  "reference_metrics": null
+}
