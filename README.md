@@ -5,7 +5,7 @@
 
 ## What is this
 
-You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured JSON result** plus an optional **Claude-written narrative**: outcome-style price metrics, S-1-derived claims and filing facts, and short sections such as pre-IPO story, post-IPO grounding, differences, watch items, and sources. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
+You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured output contract**: mandatory reference-table fields (ticker, industry/region, IPO date, S-1 claims, long-term outcome, forecast error, pattern), an IPO performance projection (decline band, rebound probability, analog companies), outcome metrics from price history, and an optional Claude-written narrative. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
 
 ## How it works
 
@@ -18,9 +18,7 @@ Inside **`single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.m
 3. **Parse** prospectus-style fields from filings into structured parser output.
 4. **Scenario builder** produces scenario output (including price performance fed from IPO-window history).
 5. **NarrativeSynthesiser** calls **Anthropic** with a compact prompt; response is parsed into `NarrativeReport` or skipped on failure.
-6. **Persist** `final_report` as `SingleAgentResult` (claims, facts, metrics, optional narrative).
-
-Comparison logic today is **implicit**: pre-IPO side is partly **S-1 / news**; post-IPO side is **later filings, metrics, and news** — the narrative step is meant to articulate gaps in plain language when enabled.
+6. **Persist** `final_report` as `SingleAgentResult`: reference table row (7 mandatory fields), pattern classification (id + source), IPO projection (decline band, rebound probability, analog companies), outcome metrics from price history, and optional narrative.
 
 ## Prerequisites
 
