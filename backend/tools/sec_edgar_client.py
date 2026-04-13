@@ -19,6 +19,8 @@ _SEC_BASE_URL = "https://www.sec.gov"
 _ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 _SUPPORTED_FORMS = ("S-1", "S-1/A", "F-1", "424B4")
 _POST_IPO_FORMS = ("10-K", "10-K/A", "10-Q", "10-Q/A")
+_EXPLICIT_SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,5}(?:[.-][A-Z0-9]{1,4})?$")
+
 _ISSUER_SUFFIX_STOPWORDS: frozenset[str] = frozenset(
     {
         "inc",
@@ -118,7 +120,8 @@ async def fetch_sec_edgar(company_name: str, max_filings: int = 3) -> list[SecFi
         return []
 
     issuer_name = await asyncio.to_thread(_resolve_conformed_issuer_name, cik)
-    input_is_direct_ticker = _looks_like_ticker_query(company_name) and _lookup_cik_from_ticker(company_name) == cik
+    norm = company_name.strip().upper()
+    input_is_direct_ticker = _is_explicit_symbol_query(norm) and _lookup_cik_from_ticker(norm) == cik
     if issuer_name and not input_is_direct_ticker:
         matches, score, requested_norm, issuer_norm = _issuer_name_match(company_name, issuer_name)
         if not matches:
@@ -247,16 +250,19 @@ def _resolve_ticker_from_name_sync(company_name: str) -> str:
 
 
 def _resolve_ticker_from_input_sync(query: str) -> str:
-    normalized = query.strip().upper()
-    if _looks_like_ticker_query(normalized) and _lookup_cik_from_ticker(normalized) is not None:
+    stripped = query.strip()
+    if not stripped:
+        return ""
+    normalized = stripped.upper()
+    if _is_explicit_symbol_query(normalized):
         return normalized
     return _resolve_ticker_from_name_sync(query)
 
 
 def _lookup_company_cik(company_name: str) -> str | None:
-    direct_ticker_match = _lookup_cik_from_ticker(company_name) if _looks_like_ticker_query(company_name) else None
-    if direct_ticker_match is not None:
-        return direct_ticker_match
+    norm = company_name.strip().upper()
+    if _is_explicit_symbol_query(norm):
+        return _lookup_cik_from_ticker(norm)
 
     ticker_match = _lookup_company_cik_from_tickers(company_name)
     if ticker_match is not None:
@@ -304,13 +310,13 @@ def _lookup_company_cik_from_tickers(company_name: str) -> str | None:
     return best["cik"]
 
 
-def _looks_like_ticker_query(value: str) -> bool:
-    normalized = value.strip().upper()
+def _is_explicit_symbol_query(normalized: str) -> bool:
     if not normalized:
         return False
-    if len(normalized) > 6:
+    compact = normalized.replace(" ", "")
+    if compact != normalized:
         return False
-    return bool(re.fullmatch(r"[A-Z][A-Z0-9.\-]*", normalized))
+    return bool(_EXPLICIT_SYMBOL_RE.fullmatch(compact))
 
 
 def _lookup_cik_from_ticker(ticker: str) -> str | None:

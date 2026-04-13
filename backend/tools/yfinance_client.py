@@ -1,12 +1,29 @@
 import asyncio
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 import importlib
 from statistics import median
 from typing import Any
 
 _log = logging.getLogger(__name__)
-_MIN_PLAUSIBLE_IPO_DATE = date(2000, 1, 1)
+_MIN_PLAUSIBLE_IPO_DATE = date(1980, 1, 1)
+_EXPLICIT_SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,5}(?:[.-][A-Z0-9]{1,4})?$")
+
+
+def _normalize_symbol_for_yahoo_fetch(ticker: str) -> str:
+    normalized = ticker.strip().upper()
+    if normalized.endswith(".ASX"):
+        return f"{normalized[:-4]}.AX"
+    return normalized
+
+
+def _yahoo_explicit_symbol_try_order(compact: str) -> list[str]:
+    ordered: list[str] = [compact]
+    mapped = _normalize_symbol_for_yahoo_fetch(compact)
+    if mapped != compact and mapped not in ordered:
+        ordered.append(mapped)
+    return ordered
 
 
 def _is_plausible_ipo_date(d: date) -> bool:
@@ -30,7 +47,7 @@ async def resolve_ipo_date_for_ticker(ticker: str) -> date | None:
 
 
 def _resolve_ipo_date_for_ticker_sync(ticker: str) -> date | None:
-    normalized = ticker.strip().upper()
+    normalized = _normalize_symbol_for_yahoo_fetch(ticker)
     if not normalized:
         return None
     try:
@@ -96,16 +113,21 @@ def _fetch_sync(company_name: str) -> YahooFinanceData:
         return YahooFinanceData()
 
     base_info = _safe_info(yf, symbol)
-    sector = str(base_info.get("sector") or "").strip().lower()
-    industry = str(base_info.get("industry") or "").strip().lower()
+    sector = str(base_info.get("sector") or "").strip()
+    industry = str(base_info.get("industry") or "").strip()
+    country = str(base_info.get("country") or "").strip()
+    exchange = str(base_info.get("exchange") or "").strip() or str(base_info.get("fullExchangeName") or "").strip()
 
-    comparable_tickers = _resolve_comparables(yf, company_name, symbol, sector, industry)
-    if not comparable_tickers:
-        return YahooFinanceData()
-    sector_multiples = _collect_sector_multiples(yf, comparable_tickers)
-    sector_performance = _sector_90d_performance(yf, comparable_tickers)
+    comparable_tickers = _resolve_comparables(yf, company_name, symbol, sector.lower(), industry.lower())
+    sector_multiples = _collect_sector_multiples(yf, comparable_tickers) if comparable_tickers else {}
+    sector_performance = _sector_90d_performance(yf, comparable_tickers) if comparable_tickers else None
 
     return YahooFinanceData(
+        listing_ticker=symbol,
+        sector=sector or None,
+        industry=industry or None,
+        country=country or None,
+        exchange=exchange or None,
         comparable_companies=comparable_tickers,
         sector_multiples=sector_multiples,
         sector_90d_performance=sector_performance,
@@ -118,13 +140,17 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
         "ipo_price": None,
         "current_price": None,
         "peak_price": None,
+        "peak_date": None,
         "trough_price": None,
+        "trough_date": None,
         "performance_since_ipo_pct": None,
         "lock_up_cliff_date": lock_up_cliff_date,
         "price_at_lock_up_cliff": None,
+        "recovered_to_ipo_date": None,
+        "recovered_to_peak_date": None,
     }
 
-    normalized_ticker = ticker.strip().upper()
+    normalized_ticker = _normalize_symbol_for_yahoo_fetch(ticker)
     if not normalized_ticker:
         return empty_result
 
@@ -148,17 +174,45 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
         _log.warning("Implausible IPO price %.4f for %s — skipping", ipo_price, normalized_ticker)
         return empty_result
     current_price = prices[-1]
+    peak_price = max(prices)
+    trough_price = min(prices)
+    peak_date = _first_date_for_price(close_points, peak_price)
+    trough_date = _first_date_for_price(close_points, trough_price)
     price_at_lock_up_cliff = _first_price_on_or_after(close_points, lock_up_cliff_date)
+    recovered_to_ipo_date = _first_recovery_date(close_points[1:], ipo_price)
+    recovered_to_peak_date = _first_recovery_date(close_points, peak_price)
 
     return {
         "ipo_price": round(ipo_price, 4),
         "current_price": round(current_price, 4),
-        "peak_price": round(max(prices), 4),
-        "trough_price": round(min(prices), 4),
+        "peak_price": round(peak_price, 4),
+        "peak_date": peak_date,
+        "trough_price": round(trough_price, 4),
+        "trough_date": trough_date,
         "performance_since_ipo_pct": _calculate_performance_pct(ipo_price, current_price),
         "lock_up_cliff_date": lock_up_cliff_date,
         "price_at_lock_up_cliff": round(price_at_lock_up_cliff, 4) if price_at_lock_up_cliff is not None else None,
+        "recovered_to_ipo_date": recovered_to_ipo_date,
+        "recovered_to_peak_date": recovered_to_peak_date,
     }
+
+
+def _yahoo_info_resolves_symbol(info: dict[str, Any], symbol: str) -> bool:
+    if not info:
+        return False
+    qt = str(info.get("quoteType") or "").strip().upper()
+    if qt == "NONE":
+        return False
+    sym = str(info.get("symbol") or "").strip().upper()
+    if sym and sym == symbol:
+        return True
+    if sym and sym.replace("-", ".") == symbol.replace("-", "."):
+        return True
+    return bool(
+        qt in ("EQUITY", "ETF", "MUTUALFUND")
+        or info.get("shortName")
+        or info.get("longName")
+    )
 
 
 def _resolve_symbol(yf: Any, company_name: str) -> str:
@@ -166,9 +220,12 @@ def _resolve_symbol(yf: Any, company_name: str) -> str:
     if not raw:
         return ""
 
-    direct = raw.upper().replace(" ", "")
-    if 1 <= len(direct) <= 5 and direct.isalpha():
-        return direct
+    compact = raw.upper().replace(" ", "")
+    if bool(_EXPLICIT_SYMBOL_RE.fullmatch(compact)):
+        for cand in _yahoo_explicit_symbol_try_order(compact):
+            info = _safe_info(yf, cand)
+            if _yahoo_info_resolves_symbol(info, cand):
+                return cand
 
     try:
         search = yf.Search(query=raw, max_results=5)
@@ -358,6 +415,20 @@ def _first_price_on_or_after(points: list[tuple[date, float]], threshold: date) 
     for point_date, point_value in points:
         if point_date >= threshold:
             return point_value
+    return None
+
+
+def _first_date_for_price(points: list[tuple[date, float]], target_price: float) -> date | None:
+    for point_date, point_value in points:
+        if abs(point_value - target_price) <= 1e-9:
+            return point_date
+    return None
+
+
+def _first_recovery_date(points: list[tuple[date, float]], threshold_price: float) -> date | None:
+    for point_date, point_value in points:
+        if point_value >= threshold_price:
+            return point_date
     return None
 
 

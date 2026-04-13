@@ -33,6 +33,7 @@ from backend.services.agent_run_logger import (
     log_agent_run_failed,
     log_agent_run_start,
 )
+from backend.services.reference_output_contract import build_output_contract_bundle
 from backend.tools.sec_edgar_client import fetch_sec_edgar, resolve_ticker_from_input
 from backend.tools.newsapi_client import fetch_news_api
 from backend.tools.rss_client import fetch_rss_feeds
@@ -255,7 +256,17 @@ def _outcome_metrics_from_scenario(scenario_output: dict[str, Any]) -> OutcomeMe
         if isinstance(price_perf.get("performance_since_ipo_pct"), (int, float))
         else None,
         peak_price=float(price_perf["peak_price"]) if isinstance(price_perf.get("peak_price"), (int, float)) else None,
+        peak_date=(
+            _coerce_analysis_date(price_perf.get("peak_date"))
+            if isinstance(price_perf.get("peak_date"), (str, date, datetime))
+            else None
+        ),
         trough_price=float(price_perf["trough_price"]) if isinstance(price_perf.get("trough_price"), (int, float)) else None,
+        trough_date=(
+            _coerce_analysis_date(price_perf.get("trough_date"))
+            if isinstance(price_perf.get("trough_date"), (str, date, datetime))
+            else None
+        ),
         lock_up_cliff_date=(
             _coerce_analysis_date(price_perf.get("lock_up_cliff_date"))
             if isinstance(price_perf.get("lock_up_cliff_date"), (str, date, datetime))
@@ -264,6 +275,16 @@ def _outcome_metrics_from_scenario(scenario_output: dict[str, Any]) -> OutcomeMe
         price_at_lock_up_cliff=float(price_perf["price_at_lock_up_cliff"])
         if isinstance(price_perf.get("price_at_lock_up_cliff"), (int, float))
         else None,
+        recovered_to_ipo_date=(
+            _coerce_analysis_date(price_perf.get("recovered_to_ipo_date"))
+            if isinstance(price_perf.get("recovered_to_ipo_date"), (str, date, datetime))
+            else None
+        ),
+        recovered_to_peak_date=(
+            _coerce_analysis_date(price_perf.get("recovered_to_peak_date"))
+            if isinstance(price_perf.get("recovered_to_peak_date"), (str, date, datetime))
+            else None
+        ),
     )
 
 
@@ -444,6 +465,23 @@ class SingleAgentToolCaller:
                     except Exception:
                         continue
 
+            yahoo_data = harvester_output.get("yahoo_finance_data") if isinstance(harvester_output.get("yahoo_finance_data"), dict) else {}
+            comparable_tickers = yahoo_data.get("comparable_companies") if isinstance(yahoo_data.get("comparable_companies"), list) else []
+
+            output_contract = build_output_contract_bundle(
+                company_name=company_name,
+                ticker=ticker_norm,
+                ipo_date=ipo_date,
+                parser_output=parser_output,
+                scenario_output=scenario_output,
+                outcome_metrics=outcome_metrics,
+                prediction_claims=prediction_claims,
+                claim_checks=claim_checks,
+                patterns_flagged=patterns_out,
+                comparable_tickers=[str(item).strip().upper() for item in comparable_tickers if str(item).strip()],
+                yahoo_finance_data=yahoo_data,
+            )
+
             narrative = await self._narrative_synthesiser.synthesise(
                 company_name=company_name,
                 parser_output=parser_output,
@@ -459,6 +497,12 @@ class SingleAgentToolCaller:
                 prediction_claims=prediction_claims,
                 filing_facts=filing_facts,
                 outcome_metrics=outcome_metrics,
+                company_profile=output_contract.company_profile,
+                pre_ipo_thesis=output_contract.pre_ipo_thesis,
+                realized_outcome=output_contract.realized_outcome,
+                pattern_classification=output_contract.pattern_classification,
+                ipo_projection=output_contract.ipo_projection,
+                reference_table_row=output_contract.reference_table_row,
                 claim_checks=claim_checks,
                 patterns=patterns_out,
                 narrative=narrative,

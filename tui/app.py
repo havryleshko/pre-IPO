@@ -63,10 +63,31 @@ class PreIPOTui(App):
         yield Footer()
 
     def watch_status_text(self, value: str) -> None:
+        lower = value.lower()
+        if "status=failed" in lower or lower.startswith("failed"):
+            text_style = "bold red"
+            border_style = "red"
+            title = "Status - failed"
+        elif "status=completed_with_flags" in lower:
+            text_style = "bold yellow"
+            border_style = "yellow"
+            title = "Status - completed_with_flags"
+        elif "status=completed" in lower:
+            text_style = "bold green"
+            border_style = "green"
+            title = "Status - completed"
+        elif "status=running" in lower or "creating analysis" in lower:
+            text_style = "bold cyan"
+            border_style = "cyan"
+            title = "Status - running"
+        else:
+            text_style = "bold cyan"
+            border_style = "cyan"
+            title = "Status"
         panel = Panel(
-            Text(value, style="bold cyan"),
-            title="Status",
-            border_style="cyan",
+            Text(value, style=text_style),
+            title=title,
+            border_style=border_style,
         )
         self.query_one("#status", Static).update(panel)
 

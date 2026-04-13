@@ -10,7 +10,7 @@ import httpx
 
 from cli.http_client import PreipoHttpClient, default_api_base
 from tui.export import export_all
-from tui.render import render_result_plain
+from tui.render import render_result_cli
 
 _TERMINAL_STATUSES = frozenset({"failed", "completed", "completed_with_flags"})
 
@@ -89,7 +89,7 @@ def _cmd_analyze(
                 data.status,
             )
             return 1
-        sys.stdout.write(render_result_plain(data.analysis_result))
+        sys.stdout.write(render_result_cli(data.analysis_result))
         return _terminal_exit_code(data.status)
 
 

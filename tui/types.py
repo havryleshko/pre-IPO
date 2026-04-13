@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -45,9 +45,76 @@ class OutcomeMetrics(BaseModel):
     current_price: float | None = None
     performance_since_ipo_pct: float | None = None
     peak_price: float | None = None
+    peak_date: date | None = None
     trough_price: float | None = None
-    lock_up_cliff_date: str | None = None
+    trough_date: date | None = None
+    lock_up_cliff_date: date | None = None
     price_at_lock_up_cliff: float | None = None
+    recovered_to_ipo_date: date | None = None
+    recovered_to_peak_date: date | None = None
+
+
+class CompanyProfile(BaseModel):
+    issuer_name: str
+    ticker: str | None = None
+    company_ticker: str
+    industry_region: str
+    ipo_date: date | None = None
+    listing_type: str | None = None
+
+
+class PreIpoThesis(BaseModel):
+    key_pre_ipo_claims: list[str] = Field(default_factory=list)
+    source_document_types: list[str] = Field(default_factory=list)
+    source_excerpts: list[str] = Field(default_factory=list)
+
+
+class RealizedOutcome(BaseModel):
+    long_term_outcome: str
+    forecast_error: str
+
+
+class PatternClassification(BaseModel):
+    primary_pattern_id: int | None = None
+    primary_pattern_label: str
+    confidence: Literal["high", "medium", "low"] = "medium"
+    rationale: str | None = None
+    analog_companies: list[str] = Field(default_factory=list)
+    secondary_pattern_labels: list[str] = Field(default_factory=list)
+    source: str = "heuristic"
+
+
+class NumericBand(BaseModel):
+    low: float | None = None
+    high: float | None = None
+    unit: str | None = None
+
+
+class MonthBand(BaseModel):
+    low: int | None = None
+    high: int | None = None
+    unit: str = "months"
+
+
+class IPOProjection(BaseModel):
+    predicted_pattern_id: int | None = None
+    pattern_confidence: Literal["high", "medium", "low"] = "medium"
+    likely_decline_band_pct: NumericBand | None = None
+    likely_time_to_trough_months: MonthBand | None = None
+    rebound_probability_band: NumericBand | None = None
+    likely_time_to_rebound_months: MonthBand | None = None
+    analog_companies: list[str] = Field(default_factory=list)
+    projection_basis: str | None = None
+
+
+class ReferenceTableRow(BaseModel):
+    company_ticker: str
+    industry_region: str
+    ipo_date: str
+    key_pre_ipo_claims: str
+    long_term_outcome: str
+    forecast_error: str
+    predicted_pattern: str
 
 
 class ClaimCheck(BaseModel):
@@ -102,6 +169,12 @@ class SingleAgentResult(BaseModel):
     prediction_claims: list[PredictionClaim] = Field(default_factory=list)
     filing_facts: list[FilingFact] = Field(default_factory=list)
     outcome_metrics: OutcomeMetrics | None = None
+    company_profile: CompanyProfile | None = None
+    pre_ipo_thesis: PreIpoThesis | None = None
+    realized_outcome: RealizedOutcome | None = None
+    pattern_classification: PatternClassification | None = None
+    ipo_projection: IPOProjection | None = None
+    reference_table_row: ReferenceTableRow | None = None
     claim_checks: list[ClaimCheck] = Field(default_factory=list)
     patterns: list[PatternFlag] = Field(default_factory=list)
     narrative: NarrativeReport | None = None

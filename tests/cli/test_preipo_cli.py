@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from cli import main as cli_main
-from tui.types import AnalysisOutputsResponse, CreateAnalysisResponse, SingleAgentResult
+from tui.types import AnalysisOutputsResponse, CreateAnalysisResponse, ReferenceTableRow, SingleAgentResult
 
 
 def test_doctor_reachable() -> None:
@@ -56,7 +56,19 @@ def test_analyze_poll_and_print_plain(capsys: pytest.CaptureFixture[str]) -> Non
         created_at=ts,
         analysis_result=None,
     )
-    result = SingleAgentResult(company_name="Acme", generated_at=ts)
+    result = SingleAgentResult(
+        company_name="Acme",
+        generated_at=ts,
+        reference_table_row=ReferenceTableRow(
+            company_ticker="Acme (ACME)",
+            industry_region="Software / US",
+            ipo_date="2024-01-01",
+            key_pre_ipo_claims="Software growth story.",
+            long_term_outcome="IPO $10; current $12.",
+            forecast_error="Delivery broadly aligned with S-1 framing.",
+            predicted_pattern="Pattern 2: Steady compounders with conservative narratives",
+        ),
+    )
     completed = AnalysisOutputsResponse(
         analysis_id="id-1",
         company_name="Acme",
@@ -84,6 +96,7 @@ def test_analyze_poll_and_print_plain(capsys: pytest.CaptureFixture[str]) -> Non
     assert code == 0
     out = capsys.readouterr().out
     assert "Acme" in out
+    assert "Company (Ticker)" in out
 
 
 def test_analyze_json_stdout(capsys: pytest.CaptureFixture[str]) -> None:

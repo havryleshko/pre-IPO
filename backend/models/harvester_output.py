@@ -29,6 +29,11 @@ class CrunchbaseData(BaseModel):
 
 
 class YahooFinanceData(BaseModel):
+    listing_ticker: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    country: str | None = None
+    exchange: str | None = None
     comparable_companies: list[str] = []
     sector_multiples: dict[str, Any] = {}
     sector_90d_performance: float | None = None
