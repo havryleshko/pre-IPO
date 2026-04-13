@@ -11,7 +11,7 @@ You enter a **company name or ticker**. The system pulls **public** data (SEC fi
 
 Mental model: **one background job per analysis** — `POST /analyses` creates a row and schedules `run_analysis_pipeline`; the client polls `GET /analyses/{id}` or listens on **WebSocket** `/analyses/{id}/progress`.
 
-Inside `**single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.md)`):
+Inside **`single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.md)`):
 
 1. **Resolve** ticker (and IPO date when available) for price history.
 2. **Harvest** in parallel: SEC EDGAR, RSS, NewsAPI, Yahoo Finance — plus a post-IPO **10-K** text path when ticker and IPO date exist.
@@ -28,7 +28,7 @@ Comparison logic today is **implicit**: pre-IPO side is partly **S-1 / news**; p
 - **Docker** 24+ (for Compose or `./run-local.sh` Postgres)
 - **PostgreSQL** reachable via `DATABASE_URL`
 - **SEC EDGAR user agent** in the form `AppName/1.0 (contact@email.com)` — required for SEC requests (`SEC_EDGAR_USER_AGENT`)
-- **Optional API keys** (see `[.env.example](.env.example)`): `NEWSAPI_API_KEY`, `CRUNCHBASE_API_KEY`, `FRED_API_KEY`, `TWITTER_BEARER_TOKEN`, `**LLM_API_KEY`** / `LLM_MODEL` (Anthropic — enables narrative sections)
+- **Optional API keys** (see `[.env.example](.env.example)`): `NEWSAPI_API_KEY`, `CRUNCHBASE_API_KEY`, `FRED_API_KEY`, `TWITTER_BEARER_TOKEN`, `LLM_API_KEY` / `LLM_MODEL` (Anthropic — enables narrative sections)
 
 ## Quickstart (Docker)
 
@@ -109,6 +109,24 @@ SQL lives in `[backend/database/migrations/](backend/database/migrations/)`. App
 
 ```bash
 pytest tests/ -v
+```
+
+## Eval status (current)
+
+- Output contract mandatory fields are stable enough to proceed with projection work:
+  - Round 3 (`tests/evals/round3_baseline.md`): `12/12` completed, mandatory coverage `0.9881` (single miss: `TER` missing `ipo_date`)
+  - Round 2 reference-exact (`tests/evals/round2_baseline.md`): mandatory coverage `1.0000`, pattern accuracy `1.0000`
+- Projection quality is the remaining gap:
+  - Round 2 reference-exact decline band hit rate `0.3333`
+  - Round 2 reference-exact rebound signal accuracy `0.4444`
+
+Run eval baselines:
+
+```bash
+source .venv/bin/activate
+PYTHONPATH=. python tests/evals/run_reference_round1_baseline.py
+PYTHONPATH=. python tests/evals/run_round2_baseline.py
+PYTHONPATH=. python tests/evals/run_round3_baseline.py
 ```
 
 ## Architecture
