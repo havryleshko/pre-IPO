@@ -71,4 +71,3 @@ Keep this document as the current Round 1 status note, and for the next pass cho
 
 - Add a **reference cohort** so canonical scoring becomes real.
 - Keep this exact nine-company heuristic cohort and define a **heuristic eval rubric** instead of pretending canonical metrics apply.
-

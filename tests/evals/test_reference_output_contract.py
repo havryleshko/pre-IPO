@@ -71,6 +71,29 @@ def test_build_output_contract_bundle_uses_reference_match() -> None:
     assert "Pattern 2" in bundle.reference_table_row.predicted_pattern
     assert bundle.pattern_classification.primary_pattern_id == 2
     assert bundle.pattern_classification.source == "reference_exact"
+    assert bundle.reference_table_row.long_term_outcome.startswith("Salesforce:")
+    assert "IPO 11.00" in bundle.reference_table_row.long_term_outcome
+    assert "current 310.00" in bundle.reference_table_row.long_term_outcome
+    assert "delivery verdict delivered" in bundle.reference_table_row.long_term_outcome
+    assert bundle.realized_outcome.long_term_outcome == bundle.reference_table_row.long_term_outcome
+
+
+def test_build_output_contract_reference_match_without_core_metrics_uses_csv_outcome() -> None:
+    bundle = build_output_contract_bundle(
+        company_name="Salesforce",
+        ticker="CRM",
+        ipo_date=date(2004, 6, 23),
+        parser_output={"offering_type": "primary"},
+        scenario_output={"ipo_delivery_verdict": "delivered"},
+        outcome_metrics=None,
+        prediction_claims=[PredictionClaim(claim_id="c1", claim_type="growth", prediction_text="Growth.", source="SEC")],
+        claim_checks=[ClaimCheck(claim_id="c1", status="supported")],
+        patterns_flagged=[],
+        comparable_tickers=["TEAM"],
+    )
+    record = lookup_reference_record(company_name="Salesforce", ticker="CRM")
+    assert record is not None
+    assert bundle.reference_table_row.long_term_outcome == record.long_term_outcome
 
 
 def test_build_output_contract_bundle_falls_back_to_heuristics() -> None:

@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 
@@ -20,6 +21,8 @@ from backend.services.agent_run_logger import (
     log_agent_run_failed,
     log_agent_run_start,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ScenarioBuilderInput(BaseModel):
@@ -419,19 +422,36 @@ class ScenarioBuilder:
             recovered_to_ipo_date=self._coerce_date(raw.get("recovered_to_ipo_date")),
             recovered_to_peak_date=self._coerce_date(raw.get("recovered_to_peak_date")),
         )
-        if (
-            pp.ipo_price is None
-            and pp.current_price is None
-            and pp.peak_price is None
-            and pp.peak_date is None
-            and pp.trough_price is None
-            and pp.trough_date is None
-            and pp.performance_since_ipo_pct is None
-            and pp.price_at_lock_up_cliff is None
-            and pp.lock_up_cliff_date is None
-            and pp.recovered_to_ipo_date is None
-            and pp.recovered_to_peak_date is None
-        ):
+        has_core_price_signal = any(
+            value is not None
+            for value in (
+                pp.ipo_price,
+                pp.current_price,
+                pp.peak_price,
+                pp.trough_price,
+                pp.performance_since_ipo_pct,
+            )
+        )
+        has_any_price_metadata = any(
+            value is not None
+            for value in (
+                pp.ipo_price,
+                pp.current_price,
+                pp.peak_price,
+                pp.peak_date,
+                pp.trough_price,
+                pp.trough_date,
+                pp.performance_since_ipo_pct,
+                pp.price_at_lock_up_cliff,
+                pp.lock_up_cliff_date,
+                pp.recovered_to_ipo_date,
+                pp.recovered_to_peak_date,
+            )
+        )
+        if not has_any_price_metadata:
+            return None
+        if not has_core_price_signal:
+            logger.warning("Ignoring incomplete ipo_price_history with metadata but no core price fields: %s", raw)
             return None
         return pp
 

@@ -103,3 +103,38 @@ def test_price_performance_parses_lock_up_date(lock_raw: date | str) -> None:
     pp = builder._price_performance_from_harvester(h)
     assert pp is not None
     assert pp.lock_up_cliff_date == date(2024, 3, 15)
+
+
+def test_price_performance_with_only_lockup_metadata_returns_none() -> None:
+    builder = ScenarioBuilder()
+    harvester_output = {
+        "ipo_price_history": {
+            "lock_up_cliff_date": "2024-03-15",
+            "price_at_lock_up_cliff": None,
+            "ipo_price": None,
+            "current_price": None,
+            "peak_price": None,
+            "trough_price": None,
+            "performance_since_ipo_pct": None,
+        }
+    }
+
+    pp = builder._price_performance_from_harvester(harvester_output)
+
+    assert pp is None
+
+
+def test_price_performance_with_core_price_field_and_lockup_metadata_returns_value() -> None:
+    builder = ScenarioBuilder()
+    harvester_output = {
+        "ipo_price_history": {
+            "lock_up_cliff_date": "2024-03-15",
+            "current_price": 12.5,
+        }
+    }
+
+    pp = builder._price_performance_from_harvester(harvester_output)
+
+    assert pp is not None
+    assert pp.current_price == 12.5
+    assert pp.lock_up_cliff_date == date(2024, 3, 15)

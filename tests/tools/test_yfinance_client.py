@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,6 +8,7 @@ from backend.tools.yfinance_client import (
     _is_plausible_ipo_date,
     _resolve_ipo_date_for_ticker_sync,
     _resolve_symbol,
+    resolve_ipo_date_for_ticker,
 )
 
 
@@ -115,6 +116,36 @@ class TestResolveIpoDateForTickerSync:
         yf.Ticker.assert_called_with("LYC.AX")
 
 
+@pytest.mark.asyncio
+async def test_resolve_ipo_date_for_ticker_retries_until_success() -> None:
+    side_effects = [None, None, date(1997, 5, 15)]
+    sleep_mock = AsyncMock()
+    with (
+        patch("backend.tools.yfinance_client._resolve_ipo_date_for_ticker_sync", side_effect=side_effects) as sync_mock,
+        patch("backend.tools.yfinance_client.asyncio.sleep", sleep_mock),
+    ):
+        result = await resolve_ipo_date_for_ticker("AMZN")
+
+    assert result == date(1997, 5, 15)
+    assert sync_mock.call_count == 3
+    assert sleep_mock.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_resolve_ipo_date_for_ticker_logs_when_retries_exhausted(caplog: pytest.LogCaptureFixture) -> None:
+    sleep_mock = AsyncMock()
+    with (
+        patch("backend.tools.yfinance_client._resolve_ipo_date_for_ticker_sync", return_value=None) as sync_mock,
+        patch("backend.tools.yfinance_client.asyncio.sleep", sleep_mock),
+        caplog.at_level("WARNING"),
+    ):
+        result = await resolve_ipo_date_for_ticker("AMZN")
+
+    assert result is None
+    assert sync_mock.call_count == 3
+    assert "Unable to resolve IPO date for ticker=AMZN after 3 attempts" in caplog.text
+
+
 class TestResolveSymbol:
     def test_explicit_exchange_symbol_skips_search_when_info_validates(self) -> None:
         yf = MagicMock()
@@ -204,18 +235,20 @@ class TestFetchIpoPriceHistorySync:
 
         ticker_mock.history.assert_called_once_with(start=ipo_date.isoformat(), auto_adjust=False)
 
-    def test_implausible_ipo_price_returns_empty(self) -> None:
+    def test_small_positive_split_adjusted_ipo_price_is_accepted(self) -> None:
         yf = MagicMock()
         ticker_mock = MagicMock()
         ipo_date = date(2021, 5, 20)
-        ticker_mock.history.return_value = self._make_history([0.001, 0.002], ipo_date)
+        ticker_mock.history.return_value = self._make_history([0.0979, 0.1200, 0.0850], ipo_date)
         yf.Ticker.return_value = ticker_mock
 
         with patch("importlib.import_module", return_value=yf):
-            result = _fetch_ipo_price_history_sync("SPAC", ipo_date)
+            result = _fetch_ipo_price_history_sync("AMZN", ipo_date)
 
-        assert result["ipo_price"] is None
-        assert result["current_price"] is None
+        assert result["ipo_price"] == 0.0979
+        assert result["current_price"] == 0.085
+        assert result["peak_price"] == 0.12
+        assert result["trough_price"] == 0.085
 
     def test_valid_price_returned_correctly(self) -> None:
         yf = MagicMock()
@@ -232,17 +265,18 @@ class TestFetchIpoPriceHistorySync:
         assert result["peak_price"] == 45.0
         assert result["trough_price"] == 38.0
 
-    def test_boundary_price_exactly_050_is_accepted(self) -> None:
+    def test_non_positive_ipo_price_returns_empty(self) -> None:
         yf = MagicMock()
         ticker_mock = MagicMock()
         ipo_date = date(2021, 1, 1)
-        ticker_mock.history.return_value = self._make_history([0.50, 1.0], ipo_date)
+        ticker_mock.history.return_value = self._make_history([0.0, 1.0], ipo_date)
         yf.Ticker.return_value = ticker_mock
 
         with patch("importlib.import_module", return_value=yf):
             result = _fetch_ipo_price_history_sync("TST", ipo_date)
 
-        assert result["ipo_price"] == 0.50
+        assert result["ipo_price"] is None
+        assert result["current_price"] is None
 
     def test_empty_ticker_returns_empty(self) -> None:
         with patch("importlib.import_module", return_value=MagicMock()):

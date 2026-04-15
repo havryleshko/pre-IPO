@@ -9,6 +9,8 @@ from typing import Any
 _log = logging.getLogger(__name__)
 _MIN_PLAUSIBLE_IPO_DATE = date(1980, 1, 1)
 _EXPLICIT_SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,5}(?:[.-][A-Z0-9]{1,4})?$")
+_IPO_DATE_RESOLUTION_ATTEMPTS = 3
+_IPO_DATE_RESOLUTION_RETRY_BASE_SECONDS = 0.25
 
 
 def _normalize_symbol_for_yahoo_fetch(ticker: str) -> str:
@@ -43,7 +45,21 @@ async def fetch_ipo_price_history(ticker: str, ipo_date: date) -> dict[str, Any]
 
 
 async def resolve_ipo_date_for_ticker(ticker: str) -> date | None:
-    return await asyncio.to_thread(_resolve_ipo_date_for_ticker_sync, ticker)
+    normalized = _normalize_symbol_for_yahoo_fetch(ticker)
+    if not normalized:
+        return None
+    for attempt in range(1, _IPO_DATE_RESOLUTION_ATTEMPTS + 1):
+        resolved = await asyncio.to_thread(_resolve_ipo_date_for_ticker_sync, normalized)
+        if resolved is not None:
+            return resolved
+        if attempt < _IPO_DATE_RESOLUTION_ATTEMPTS:
+            await asyncio.sleep(_IPO_DATE_RESOLUTION_RETRY_BASE_SECONDS * attempt)
+    _log.warning(
+        "Unable to resolve IPO date for ticker=%s after %s attempts",
+        normalized,
+        _IPO_DATE_RESOLUTION_ATTEMPTS,
+    )
+    return None
 
 
 def _resolve_ipo_date_for_ticker_sync(ticker: str) -> date | None:
@@ -170,8 +186,8 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
 
     prices = [price for _, price in close_points]
     ipo_price = prices[0]
-    if ipo_price < 0.50:
-        _log.warning("Implausible IPO price %.4f for %s — skipping", ipo_price, normalized_ticker)
+    if ipo_price <= 0:
+        _log.warning("Non-positive IPO price %.4f for %s — skipping", ipo_price, normalized_ticker)
         return empty_result
     current_price = prices[-1]
     peak_price = max(prices)

@@ -33,7 +33,10 @@ from backend.services.agent_run_logger import (
     log_agent_run_failed,
     log_agent_run_start,
 )
-from backend.services.reference_output_contract import build_output_contract_bundle
+from backend.services.reference_output_contract import (
+    build_output_contract_bundle,
+    outcome_metrics_has_core_price_signal,
+)
 from backend.tools.sec_edgar_client import fetch_sec_edgar, resolve_ticker_from_input
 from backend.tools.newsapi_client import fetch_news_api
 from backend.tools.rss_client import fetch_rss_feeds
@@ -248,44 +251,21 @@ def _filing_facts_from_parser(parser_output: dict[str, Any], source_url: str | N
 def _outcome_metrics_from_scenario(scenario_output: dict[str, Any]) -> OutcomeMetrics | None:
     price_perf = scenario_output.get("price_performance")
     if not isinstance(price_perf, dict):
+        if "price_performance" in scenario_output and price_perf is not None:
+            logger.warning(
+                "scenario_output.price_performance is not a dict (type=%s)",
+                type(price_perf).__name__,
+            )
         return None
-    return OutcomeMetrics(
-        ipo_price=float(price_perf["ipo_price"]) if isinstance(price_perf.get("ipo_price"), (int, float)) else None,
-        current_price=float(price_perf["current_price"]) if isinstance(price_perf.get("current_price"), (int, float)) else None,
-        performance_since_ipo_pct=float(price_perf["performance_since_ipo_pct"])
-        if isinstance(price_perf.get("performance_since_ipo_pct"), (int, float))
-        else None,
-        peak_price=float(price_perf["peak_price"]) if isinstance(price_perf.get("peak_price"), (int, float)) else None,
-        peak_date=(
-            _coerce_analysis_date(price_perf.get("peak_date"))
-            if isinstance(price_perf.get("peak_date"), (str, date, datetime))
-            else None
-        ),
-        trough_price=float(price_perf["trough_price"]) if isinstance(price_perf.get("trough_price"), (int, float)) else None,
-        trough_date=(
-            _coerce_analysis_date(price_perf.get("trough_date"))
-            if isinstance(price_perf.get("trough_date"), (str, date, datetime))
-            else None
-        ),
-        lock_up_cliff_date=(
-            _coerce_analysis_date(price_perf.get("lock_up_cliff_date"))
-            if isinstance(price_perf.get("lock_up_cliff_date"), (str, date, datetime))
-            else None
-        ),
-        price_at_lock_up_cliff=float(price_perf["price_at_lock_up_cliff"])
-        if isinstance(price_perf.get("price_at_lock_up_cliff"), (int, float))
-        else None,
-        recovered_to_ipo_date=(
-            _coerce_analysis_date(price_perf.get("recovered_to_ipo_date"))
-            if isinstance(price_perf.get("recovered_to_ipo_date"), (str, date, datetime))
-            else None
-        ),
-        recovered_to_peak_date=(
-            _coerce_analysis_date(price_perf.get("recovered_to_peak_date"))
-            if isinstance(price_perf.get("recovered_to_peak_date"), (str, date, datetime))
-            else None
-        ),
-    )
+    try:
+        outcome = OutcomeMetrics.model_validate(price_perf)
+    except Exception:
+        logger.warning("scenario_output.price_performance failed validation: %s", price_perf)
+        return None
+    if not outcome_metrics_has_core_price_signal(outcome):
+        logger.warning("price_performance missing core price fields: %s", price_perf)
+        return None
+    return outcome
 
 
 def _claim_checks_from_s1_evidence(

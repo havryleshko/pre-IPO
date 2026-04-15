@@ -120,6 +120,57 @@ def _safe_iso_date(value: date | None) -> str:
     return value.isoformat() if value is not None else "unavailable"
 
 
+def outcome_metrics_has_core_price_signal(outcome_metrics: OutcomeMetrics | None) -> bool:
+    if outcome_metrics is None:
+        return False
+    return any(
+        value is not None
+        for value in (
+            outcome_metrics.ipo_price,
+            outcome_metrics.current_price,
+            outcome_metrics.peak_price,
+            outcome_metrics.trough_price,
+            outcome_metrics.performance_since_ipo_pct,
+        )
+    )
+
+
+def format_long_term_outcome_line(
+    *,
+    company_name: str,
+    outcome_metrics: OutcomeMetrics | None,
+    delivery_verdict: str | None = None,
+) -> str:
+    return _derived_long_term_outcome(
+        company_name=company_name,
+        outcome_metrics=outcome_metrics,
+        delivery_verdict=delivery_verdict,
+    )
+
+
+def _resolved_long_term_outcome_line(
+    *,
+    company_name: str,
+    outcome_metrics: OutcomeMetrics | None,
+    delivery_verdict: str | None,
+    fallback_line: str | None = None,
+) -> str:
+    if outcome_metrics_has_core_price_signal(outcome_metrics):
+        return format_long_term_outcome_line(
+            company_name=company_name,
+            outcome_metrics=outcome_metrics,
+            delivery_verdict=delivery_verdict,
+        )
+    fallback = str(fallback_line or "").strip()
+    if fallback:
+        return fallback
+    return _derived_long_term_outcome(
+        company_name=company_name,
+        outcome_metrics=outcome_metrics,
+        delivery_verdict=delivery_verdict,
+    )
+
+
 @lru_cache(maxsize=1)
 def load_canonical_reference_dataset() -> list[CanonicalReferenceRecord]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -294,6 +345,8 @@ def _derived_long_term_outcome(
         pieces.append(f"peak {outcome_metrics.peak_price:.2f}")
     if outcome_metrics.trough_price is not None:
         pieces.append(f"trough {outcome_metrics.trough_price:.2f}")
+    if not pieces:
+        return f"{company_name}: post-IPO price performance unavailable."
     verdict_text = f"; delivery verdict {delivery_verdict}" if delivery_verdict else ""
     return f"{company_name}: " + ", ".join(pieces) + verdict_text + "."
 
@@ -372,6 +425,13 @@ def build_output_contract_bundle(
     reference = lookup_reference_record(company_name=company_name, ticker=ticker)
     comparable_tickers = comparable_tickers or []
     if reference is not None:
+        delivery_verdict = str(scenario_output.get("ipo_delivery_verdict") or "").strip() or None
+        long_term_outcome_line = _resolved_long_term_outcome_line(
+            company_name=company_name,
+            outcome_metrics=outcome_metrics,
+            delivery_verdict=delivery_verdict,
+            fallback_line=reference.long_term_outcome,
+        )
         company_profile = CompanyProfile(
             issuer_name=reference.company_name,
             ticker=reference.ticker,
@@ -386,7 +446,7 @@ def build_output_contract_bundle(
             source_excerpts=[reference.key_pre_ipo_claims],
         )
         realized_outcome = RealizedOutcome(
-            long_term_outcome=reference.long_term_outcome,
+            long_term_outcome=long_term_outcome_line,
             forecast_error=reference.forecast_error,
         )
         analog_records = _analog_records_for_profile(
@@ -409,7 +469,7 @@ def build_output_contract_bundle(
             industry_region=reference.industry_region or "unavailable",
             ipo_date=reference.ipo_date or _safe_iso_date(ipo_date),
             key_pre_ipo_claims=reference.key_pre_ipo_claims or "unavailable",
-            long_term_outcome=reference.long_term_outcome or "unavailable",
+            long_term_outcome=long_term_outcome_line,
             forecast_error=reference.forecast_error or "unavailable",
             predicted_pattern=reference.predicted_pattern or "unavailable",
         )
@@ -454,7 +514,7 @@ def build_output_contract_bundle(
         source_excerpts=derived_claims[:2],
     )
     realized_outcome = RealizedOutcome(
-        long_term_outcome=_derived_long_term_outcome(
+        long_term_outcome=_resolved_long_term_outcome_line(
             company_name=company_name,
             outcome_metrics=outcome_metrics,
             delivery_verdict=str(scenario_output.get("ipo_delivery_verdict") or "").strip() or None,
