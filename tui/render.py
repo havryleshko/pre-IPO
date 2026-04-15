@@ -20,18 +20,6 @@ _METRIC_LABEL: dict[str, str] = {
     "price_at_lock_up_cliff": "Price at lock-up cliff",
 }
 
-_CLAIM_TYPE_LABEL: dict[str, str] = {
-    "revenue": "Revenue",
-    "ad_revenue": "Ad revenue",
-    "growth_rate": "Growth rate",
-    "net_loss": "Net loss",
-    "valuation": "Valuation",
-    "share_count": "Share count",
-    "proceeds": "Proceeds",
-    "offering_price_range": "Offering price",
-    "other": "Other",
-}
-
 
 def _outcome_rows(om: OutcomeMetrics) -> list[tuple[str, str]]:
     return [
@@ -180,22 +168,11 @@ def render_result_plain(result: SingleAgentResult) -> str:
         lines.append("")
 
     discrepancies = list(result.news_filing_discrepancies or [])
-    news_claims = list(result.news_derived_claims or [])
     if discrepancies:
         lines.append("Headlines vs filing")
         for d in discrepancies[:5]:
             ctype = "numeric" if d.contradiction_type == "derived_numeric_contradiction" else "text"
             lines.append(f"  [{ctype}] {d.news_evidence[:80]} vs {d.filing_evidence[:60]}")
-        lines.append("")
-    elif news_claims:
-        lines.append("News claims extracted")
-        type_groups: dict[str, list[str]] = {}
-        for nc in news_claims[:10]:
-            label = _CLAIM_TYPE_LABEL.get(nc.claim_type, nc.claim_type)
-            val_str = f" = {nc.normalized_value} {nc.units or ''}".rstrip() if nc.normalized_value is not None else ""
-            type_groups.setdefault(label, []).append(f"{nc.evidence_quote[:60]}{val_str}")
-        for label, items in type_groups.items():
-            lines.append(f"  {label}: {items[0]}")
         lines.append("")
 
     if result.filing_facts:
@@ -311,7 +288,6 @@ def render_result_cli(result: SingleAgentResult) -> str:
         console.print(Panel(patterns, title="Patterns", box=box.ROUNDED))
 
     discrepancies = list(result.news_filing_discrepancies or [])
-    news_claims = list(result.news_derived_claims or [])
     if discrepancies:
         disc = Table(box=box.SIMPLE_HEAVY, show_header=True)
         disc.add_column("Type")
@@ -321,14 +297,6 @@ def render_result_cli(result: SingleAgentResult) -> str:
             dtype = "numeric" if item.contradiction_type == "derived_numeric_contradiction" else "text"
             disc.add_row(dtype, item.news_evidence[:120], item.filing_evidence[:120])
         console.print(Panel(disc, title="Headlines vs filing", box=box.ROUNDED))
-    elif news_claims:
-        claims = Table(box=box.SIMPLE_HEAVY, show_header=True)
-        claims.add_column("Claim type")
-        claims.add_column("Evidence")
-        for item in news_claims[:8]:
-            label = _CLAIM_TYPE_LABEL.get(item.claim_type, item.claim_type)
-            claims.add_row(label, item.evidence_quote[:120])
-        console.print(Panel(claims, title="News claims extracted", box=box.ROUNDED))
 
     return buf.getvalue()
 
@@ -385,21 +353,12 @@ def render_result_markdown(result: SingleAgentResult) -> str:
         lines.append("")
 
     discrepancies = list(result.news_filing_discrepancies or [])
-    news_claims = list(result.news_derived_claims or [])
     if discrepancies:
         lines.append("## Headlines vs filing")
         lines.append("")
         for d in discrepancies[:5]:
             ctype = "numeric" if d.contradiction_type == "derived_numeric_contradiction" else "text"
             lines.append(f"- `[{ctype}]` {d.news_evidence[:120]} — filing: _{d.filing_evidence[:80]}_")
-        lines.append("")
-    elif news_claims:
-        lines.append("## News claims extracted")
-        lines.append("")
-        for nc in news_claims[:10]:
-            label = _CLAIM_TYPE_LABEL.get(nc.claim_type, nc.claim_type)
-            val_str = f" = {nc.normalized_value} {nc.units or ''}".rstrip() if nc.normalized_value is not None else ""
-            lines.append(f"- **{label}**{val_str}: {nc.evidence_quote[:100]}")
         lines.append("")
 
     if result.filing_facts:

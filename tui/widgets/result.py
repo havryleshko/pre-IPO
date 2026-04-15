@@ -133,10 +133,6 @@ class FinancialResultWidget(VerticalScroll, can_focus=True):
         if claim_checks is not None:
             sections.append(claim_checks)
 
-        news_claims = self._build_news_claims_panel(data)
-        if news_claims is not None:
-            sections.append(news_claims)
-
         return Group(*sections)
 
     def _build_reference_panel(self, data: dict[str, Any]) -> Panel:
@@ -225,14 +221,6 @@ class FinancialResultWidget(VerticalScroll, can_focus=True):
             )
 
         return Panel(table, title="S-1 Claim Checks", border_style="cyan", padding=(1, 2))
-
-    def _build_news_claims_panel(self, data: dict[str, Any]) -> Panel | None:
-        claims = data.get("news_claims") or []
-        if not claims:
-            return None
-
-        bullets = [Text(f"• {str(claim)}", style="white") for claim in claims]
-        return Panel(Group(*bullets), title="News Claims Extracted", border_style="cyan", padding=(1, 2))
 
     def _build_filing_snapshot_panel(self, data: dict[str, Any]) -> Panel | None:
         rows = data.get("filing_snapshot") or []

@@ -180,7 +180,6 @@ class PreIPOTui(App):
                     "predicted_pattern": "—",
                     "outcome_data": {},
                     "s1_claim_checks": [],
-                    "news_claims": [],
                     "filing_snapshot": [],
                     "interpretation": "Analysis running..." if data.status == "running" else "No structured result returned.",
                 }
@@ -206,7 +205,6 @@ class PreIPOTui(App):
             "predicted_pattern": "—",
             "outcome_data": {},
             "s1_claim_checks": [],
-            "news_claims": [],
             "filing_snapshot": [],
             "interpretation": "—",
         }
@@ -269,8 +267,6 @@ class PreIPOTui(App):
             }
             for c in result.claim_checks
         ]
-
-        payload["news_claims"] = [item.evidence_quote for item in result.news_derived_claims]
 
         payload["filing_snapshot"] = [
             {"field": fact.metric, "value": fact.value if fact.value is not None else fact.units}
