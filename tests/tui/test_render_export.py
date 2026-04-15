@@ -85,9 +85,9 @@ def _sample_result() -> SingleAgentResult:
         ),
         claim_checks=[
             ClaimCheck(
-                claim_id="c1",
+                claim_id="Revenue growth guidance present?",
                 status="supported",
-                evidence_quotes=["S-1 projection: X", "10-K actual: Y"],
+                evidence_quotes=["We expect revenue growth of 35% over the next 12 months."],
                 confidence="high",
             )
         ],
@@ -110,6 +110,8 @@ def test_render_plain_contains_sections() -> None:
     assert "What to watch" in s
     assert "Sources" in s
     assert "TestCo delivered modest gains" in s
+    assert "Revenue growth guidance present?" in s
+    assert "Yes" in s
 
 
 def test_render_plain_fallback_without_narrative() -> None:
@@ -132,6 +134,19 @@ def test_render_markdown_contains_headers() -> None:
     assert "## Key differences" in s
     assert "## What to watch" in s
     assert "## Sources" in s
+    assert "Revenue growth guidance present?" in s
+    assert "`Yes`" in s
+
+
+def test_render_plain_and_markdown_include_extra_checklist_rows() -> None:
+    r = _sample_result()
+    label = "SPAC / merger-deck style projections (heuristic)?"
+    r.claim_checks = [
+        *r.claim_checks,
+        ClaimCheck(claim_id=label, status="mixed", rationale="Heuristic only.", confidence="high"),
+    ]
+    assert label in render_result_plain(r)
+    assert label in render_result_markdown(r)
 
 
 def test_render_markdown_fallback_without_narrative() -> None:
@@ -163,13 +178,20 @@ def test_render_plain_grounded_sections_visible_with_narrative() -> None:
         FilingFact(fact_id="ff1", metric="total_revenue_2022", value=500.0, units="$M", source="s1_f1")
     ]
     result.claim_checks = [
-        ClaimCheck(claim_id="c1", status="missed", evidence_quotes=["S-1: 40%", "10-K: 18%"], confidence="high")
+        ClaimCheck(
+            claim_id="Profitability timeline mentioned?",
+            status="mixed",
+            evidence_quotes=["We expect to achieve profitability as scale improves."],
+            rationale="Profitability is mentioned, but the filing does not give a concrete timeline.",
+            confidence="high",
+        )
     ]
     s = render_result_plain(result)
     assert "Patterns" in s
     assert "Filing snapshot" in s
     assert "S-1 claim checks" in s
     assert "Pre-IPO story" in s
+    assert "Partial" in s
 
 
 def test_render_markdown_grounded_sections_visible_with_narrative() -> None:

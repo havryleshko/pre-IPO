@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from tui.app import PreIPOTui
 from tui.types import (
+    ClaimCheck,
     OutcomeMetrics,
     RealizedOutcome,
     ReferenceTableRow,
@@ -59,3 +60,29 @@ def test_map_result_leaves_outcome_table_empty_when_metrics_missing() -> None:
     )
     mapped = app._map_result_to_widget_data(result)
     assert mapped["outcome_data"] == {}
+
+
+def test_map_result_preserves_claim_check_label_and_evidence() -> None:
+    app = PreIPOTui()
+    result = SingleAgentResult(
+        company_name="Co",
+        generated_at=datetime.now(timezone.utc),
+        claim_checks=[
+            ClaimCheck(
+                claim_id="Revenue growth guidance present?",
+                status="supported",
+                evidence_quotes=["We expect revenue growth of 35% over the next 12 months."],
+                rationale=None,
+            )
+        ],
+    )
+    mapped = app._map_result_to_widget_data(result)
+    assert mapped["s1_claim_checks"] == [
+        {
+            "label": "Revenue growth guidance present?",
+            "status": "supported",
+            "quote": "We expect revenue growth of 35% over the next 12 months.",
+            "rationale": None,
+            "confidence": "medium",
+        }
+    ]

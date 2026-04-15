@@ -82,15 +82,15 @@ def _mandatory_completeness(result: SingleAgentResult) -> str:
 
 
 def _delivery_direction(result: SingleAgentResult) -> str:
-    if not result.claim_checks:
-        return "—"
-    supported = sum(1 for check in result.claim_checks if check.status == "supported")
-    missed = sum(1 for check in result.claim_checks if check.status == "missed")
-    if supported > missed:
-        return "positive"
-    if missed > supported:
+    forecast_error = result.realized_outcome.forecast_error if result.realized_outcome is not None else ""
+    lower = forecast_error.lower()
+    if "underdelivered" in lower:
         return "negative"
-    return "mixed"
+    if "aligned" in lower:
+        return "positive"
+    if "mixed" in lower:
+        return "mixed"
+    return "—"
 
 
 def _status_color(status: str) -> str:
@@ -101,6 +101,16 @@ def _status_color(status: str) -> str:
         "unverifiable": "cyan",
     }
     return mapping.get(status, "white")
+
+
+def _claim_check_signal(status: str) -> str:
+    mapping = {
+        "supported": "Yes",
+        "missed": "No",
+        "mixed": "Partial",
+        "unverifiable": "Unknown",
+    }
+    return mapping.get(status, "Unknown")
 
 
 def _pct_color(value: str) -> str:
@@ -153,11 +163,13 @@ def render_result_plain(result: SingleAgentResult) -> str:
 
     if result.claim_checks:
         lines.append("S-1 claim checks")
-        for c in result.claim_checks[:6]:
+        for c in result.claim_checks:
             status_icon = {"supported": "+", "missed": "!", "mixed": "~", "unverifiable": "?"}.get(c.status, "?")
-            lines.append(f"  [{status_icon}] {c.claim_id} — {c.status} (confidence={c.confidence})")
-            for q in c.evidence_quotes[:2]:
-                lines.append(f"      {q[:90]}")
+            lines.append(f"  [{status_icon}] {c.claim_id} — {_claim_check_signal(c.status)}")
+            if c.evidence_quotes:
+                lines.append(f"      {c.evidence_quotes[0][:120]}")
+            elif c.rationale:
+                lines.append(f"      {c.rationale[:120]}")
         lines.append("")
 
     if result.patterns:
@@ -277,11 +289,16 @@ def render_result_cli(result: SingleAgentResult) -> str:
 
     if result.claim_checks:
         checks = Table(box=box.SIMPLE_HEAVY, show_header=True)
-        checks.add_column("Claim")
-        checks.add_column("Status")
-        checks.add_column("Confidence")
-        for check in result.claim_checks[:6]:
-            checks.add_row(check.claim_id, Text(check.status, style=_status_color(check.status)), check.confidence)
+        checks.add_column("Check")
+        checks.add_column("Signal")
+        checks.add_column("Evidence")
+        for check in result.claim_checks:
+            evidence = check.evidence_quotes[0] if check.evidence_quotes else (check.rationale or "—")
+            checks.add_row(
+                check.claim_id,
+                Text(_claim_check_signal(check.status), style=_status_color(check.status)),
+                evidence[:120],
+            )
         console.print(Panel(checks, title="S-1 claim checks", box=box.ROUNDED))
 
     if result.patterns:
@@ -351,10 +368,12 @@ def render_result_markdown(result: SingleAgentResult) -> str:
     if result.claim_checks:
         lines.append("## S-1 claim checks")
         lines.append("")
-        for c in result.claim_checks[:6]:
-            lines.append(f"- **{c.claim_id}**: `{c.status}` (confidence `{c.confidence}`)")
-            for q in c.evidence_quotes[:2]:
-                lines.append(f"  - {q[:120]}")
+        for c in result.claim_checks:
+            lines.append(f"- **{c.claim_id}**: `{_claim_check_signal(c.status)}`")
+            if c.evidence_quotes:
+                lines.append(f"  - {c.evidence_quotes[0][:120]}")
+            elif c.rationale:
+                lines.append(f"  - {c.rationale[:120]}")
         lines.append("")
 
     if result.patterns:

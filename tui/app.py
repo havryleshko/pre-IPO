@@ -260,7 +260,14 @@ class PreIPOTui(App):
             payload["outcome_data"] = outcome_data
 
         payload["s1_claim_checks"] = [
-            {"claim": c.claim_id, "status": c.status} for c in result.claim_checks
+            {
+                "label": c.claim_id,
+                "status": c.status,
+                "quote": c.evidence_quotes[0] if c.evidence_quotes else None,
+                "rationale": c.rationale,
+                "confidence": c.confidence,
+            }
+            for c in result.claim_checks
         ]
 
         payload["news_claims"] = [item.evidence_quote for item in result.news_derived_claims]

@@ -186,8 +186,11 @@ async def test_arm_fixture_pipeline_delivered() -> None:
     claim_checks = final_report.get("claim_checks") or []
     assert isinstance(claim_checks, list)
     status_by_claim_id = {c.get("claim_id"): c.get("status") for c in claim_checks if isinstance(c, dict)}
-    assert status_by_claim_id.get("s1_revenue_growth") == "supported"
-    assert status_by_claim_id.get("s1_burn_rate") == "supported"
+    assert status_by_claim_id.get("Revenue growth guidance present?") == "supported"
+    assert status_by_claim_id.get("Red-flag language in Risk Factors?") == "supported"
+    assert "SPAC / merger-deck style projections (heuristic)?" in status_by_claim_id
+    revenue_row = next(c for c in claim_checks if c.get("claim_id") == "Revenue growth guidance present?")
+    assert revenue_row.get("evidence_quotes")
 
 
 @pytest.mark.asyncio
@@ -211,7 +214,8 @@ async def test_cart_fixture_pipeline_underdelivered() -> None:
     claim_checks = final_report.get("claim_checks") or []
     assert isinstance(claim_checks, list)
     status_by_claim_id = {c.get("claim_id"): c.get("status") for c in claim_checks if isinstance(c, dict)}
-    assert status_by_claim_id.get("s1_revenue_growth") == "missed"
+    assert status_by_claim_id.get("Revenue growth guidance present?") == "supported"
+    assert status_by_claim_id.get("Sparse disclosure typical of era?") == "missed"
 
 
 @pytest.mark.asyncio

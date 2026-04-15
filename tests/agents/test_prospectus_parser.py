@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -199,6 +200,116 @@ def test_extracts_structured_risk_factors_and_filters_toc_noise(parser: Prospect
         e.source_reference == "SEC EDGAR S-1 — Risk Factors section"
         for e in out.risk_factors_evidence
     )
+
+
+def test_builds_s1_disclosure_checklist_from_modern_filing(parser: ProspectusParser) -> None:
+    text = """
+Our business model focuses on subscription analytics software.
+We expect revenue growth of 35% over the next 12 months.
+We expect to achieve profitability by 2027 as scale improves.
+We served 1,200 enterprise customers and reported 118% net revenue retention.
+Industry analysts estimate our total addressable market at $12 billion with a 14% CAGR.
+RISK FACTORS
+We have a limited operating history and may never achieve profitability if enterprise demand weakens materially.
+The 180 days lock-up period applies to insiders. Total shares offered 100,000,000. Public float 70,000,000.
+"""
+    harvester = {"sec_filings": [{"text": text}], "yahoo_finance_data": {}, "crunchbase_data": {}}
+    out = parser._parse_harvester_output("TestCo", harvester)
+
+    checks = parser.build_s1_disclosure_checklist(out.model_dump(mode="json"), text)
+    status_by_label = {item.claim_id: item.status for item in checks}
+
+    assert status_by_label["Revenue growth guidance present?"] == "supported"
+    assert status_by_label["Profitability timeline mentioned?"] == "supported"
+    assert status_by_label["Customer/cohort metrics disclosed?"] == "supported"
+    assert status_by_label["Explicit CAGR or market-size claim?"] == "supported"
+    assert status_by_label["Red-flag language in Risk Factors?"] == "supported"
+    assert status_by_label["SPAC / merger-deck style projections (heuristic)?"] == "missed"
+    assert status_by_label["Sparse disclosure typical of era?"] == "missed"
+    assert len(checks) == 7
+    assert any("35%" in quote for item in checks for quote in item.evidence_quotes)
+
+
+def test_builds_s1_disclosure_checklist_for_sparse_filing(parser: ProspectusParser) -> None:
+    text = """
+PROSPECTUS
+The 180 days lock-up period applies to insiders.
+Total shares offered 9,000,000. Public float 6,000,000.
+"""
+    harvester = {"sec_filings": [{"text": text}], "yahoo_finance_data": {}, "crunchbase_data": {}}
+    out = parser._parse_harvester_output("OldCo", harvester)
+
+    checks = parser.build_s1_disclosure_checklist(out.model_dump(mode="json"), text)
+    sparse_row = next(item for item in checks if item.claim_id == "Sparse disclosure typical of era?")
+
+    assert sparse_row.status == "supported"
+    assert sparse_row.rationale == "Sparse disclosure typical of era — only lock-up and basic share count were clearly disclosed."
+    proj = next(item for item in checks if item.claim_id == "SPAC / merger-deck style projections (heuristic)?")
+    assert proj.status == "missed"
+    assert len(checks) == 7
+
+
+def test_builds_s1_disclosure_checklist_without_filing_text(parser: ProspectusParser) -> None:
+    checks = parser.build_s1_disclosure_checklist({"data_confidence": "low"}, "")
+    assert len(checks) == 7
+    assert all(
+        item.status == "unverifiable"
+        for item in checks
+        if item.claim_id != "Sparse disclosure typical of era?"
+    )
+    sparse_row = next(c for c in checks if c.claim_id == "Sparse disclosure typical of era?")
+    assert sparse_row.status == "mixed"
+
+
+def test_builds_s1_disclosure_checklist_without_filing_text_pre_2000_adds_era_note(parser: ProspectusParser) -> None:
+    checks = parser.build_s1_disclosure_checklist({"data_confidence": "low"}, "", ipo_date=date(1995, 1, 1))
+    assert len(checks) == 7
+    assert "Pre-2000 UK/US prospectuses" in (checks[0].rationale or "")
+
+
+def test_builds_s1_disclosure_checklist_without_filing_text_uk_hint_adds_era_note(parser: ProspectusParser) -> None:
+    checks = parser.build_s1_disclosure_checklist(
+        {"data_confidence": "low"},
+        "",
+        yahoo_finance_data={"country": "United Kingdom"},
+    )
+    assert "Pre-2000 UK/US prospectuses" in (checks[0].rationale or "")
+
+
+def test_builds_s1_projection_heuristic_spac_supported(parser: ProspectusParser) -> None:
+    text = (
+        "This investor presentation summarizes the proposed business combination with our SPAC sponsor. "
+        "The 180 days lock-up period applies. Total shares offered 10,000,000."
+    )
+    out = parser._parse_harvester_output(
+        "SpacCo",
+        {"sec_filings": [{"text": text}], "yahoo_finance_data": {}, "crunchbase_data": {}},
+    )
+    checks = parser.build_s1_disclosure_checklist(out.model_dump(mode="json"), text)
+    proj = next(c for c in checks if c.claim_id == "SPAC / merger-deck style projections (heuristic)?")
+    assert proj.status == "supported"
+
+
+def test_builds_s1_projection_heuristic_direct_listing_mixed(parser: ProspectusParser) -> None:
+    text = (
+        "We are completing a direct listing on the exchange. "
+        "The 180 days lock-up period applies. Total shares offered 10,000,000."
+    )
+    out = parser._parse_harvester_output(
+        "DirCo",
+        {"sec_filings": [{"text": text}], "yahoo_finance_data": {}, "crunchbase_data": {}},
+    )
+    checks = parser.build_s1_disclosure_checklist(out.model_dump(mode="json"), text)
+    proj = next(c for c in checks if c.claim_id == "SPAC / merger-deck style projections (heuristic)?")
+    assert proj.status == "mixed"
+
+
+def test_prospectus_filing_type_loose(parser: ProspectusParser) -> None:
+    assert parser._is_prospectus_filing_type_loose("FORM S-1")
+    assert parser._is_prospectus_filing_type_loose("S-1/A")
+    assert parser._is_prospectus_filing_type_loose("424B4")
+    assert not parser._is_prospectus_filing_type_loose("S-11")
+    assert not parser._is_prospectus_filing_type_loose("10-K")
 
 
 def test_no_filing_flags_section(parser: ProspectusParser) -> None:

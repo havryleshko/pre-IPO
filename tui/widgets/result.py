@@ -195,23 +195,34 @@ class FinancialResultWidget(VerticalScroll, can_focus=True):
             return None
         table = Table(show_header=False, box=None, padding=(0, 1))
         table.add_column("", width=3, justify="center")
-        table.add_column("Claim", style="white")
-        table.add_column("Status", style="white")
+        table.add_column("Check", style="bold white", width=52)
+        table.add_column("Signal", style="white", width=10, no_wrap=True)
+        table.add_column("Evidence", style="white")
 
         for item in checks:
             status = str(item.get("status", "unverifiable"))
             icon = "[?]"
             color = "cyan"
+            signal = "Unknown"
             if status == "supported":
                 icon = "[+]"
                 color = "green"
+                signal = "Yes"
             elif status == "missed":
                 icon = "[!]"
                 color = "red"
+                signal = "No"
             elif status == "mixed":
                 icon = "[~]"
                 color = "yellow"
-            table.add_row(Text(icon, style=color), str(item.get("claim", "—")), status)
+                signal = "Partial"
+            evidence = str(item.get("quote") or item.get("rationale") or "—")
+            table.add_row(
+                Text(icon, style=color),
+                str(item.get("label") or item.get("claim") or "—"),
+                Text(signal, style=color),
+                Text(evidence),
+            )
 
         return Panel(table, title="S-1 Claim Checks", border_style="cyan", padding=(1, 2))
 

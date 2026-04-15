@@ -81,8 +81,8 @@ def _first_s1_url(analysis: dict[str, Any]) -> str | None:
     for filing in sec_filings:
         if not isinstance(filing, dict):
             continue
-        filing_type = str(filing.get("filing_type") or "").lower()
-        if "s-1" in filing_type or "f-1" in filing_type:
+        filing_type = str(filing.get("filing_type") or "")
+        if ProspectusParser._is_prospectus_filing_type_loose(filing_type):
             url = filing.get("url")
             if isinstance(url, str) and url.strip():
                 return url.strip()
@@ -93,6 +93,25 @@ def _first_s1_url(analysis: dict[str, Any]) -> str | None:
         if isinstance(url, str) and url.strip():
             return url.strip()
     return None
+
+
+def _first_s1_text(analysis: dict[str, Any]) -> str:
+    harvester_output = analysis.get("harvester_output")
+    if not isinstance(harvester_output, dict):
+        return ""
+    sec_filings = harvester_output.get("sec_filings")
+    if not isinstance(sec_filings, list):
+        return ""
+    for filing in sec_filings:
+        if not isinstance(filing, dict):
+            continue
+        filing_type = str(filing.get("filing_type") or "")
+        if not ProspectusParser._is_prospectus_filing_type_loose(filing_type):
+            continue
+        text = str(filing.get("text") or "").strip()
+        if text:
+            return text
+    return ""
 
 
 def _prediction_claims_from_parser(parser_output: dict[str, Any], source_url: str | None) -> list[PredictionClaim]:
@@ -268,7 +287,7 @@ def _outcome_metrics_from_scenario(scenario_output: dict[str, Any]) -> OutcomeMe
     return outcome
 
 
-def _claim_checks_from_s1_evidence(
+def _delivery_claim_checks_from_s1_evidence(
     prediction_claims: list[PredictionClaim],
     scenario_output: dict[str, Any],
     parser_output: dict[str, Any],
@@ -324,6 +343,24 @@ def _claim_checks_from_s1_evidence(
             )
         )
     return checks
+
+
+def _claim_checks_from_s1_evidence(
+    parser: ProspectusParser,
+    parser_output: dict[str, Any],
+    filing_text: str,
+    *,
+    ipo_date: date | None,
+    yahoo_finance_data: dict[str, Any],
+    ticker: str | None,
+) -> list[ClaimCheck]:
+    return parser.build_s1_disclosure_checklist(
+        parser_output=parser_output,
+        filing_text=filing_text,
+        ipo_date=ipo_date,
+        yahoo_finance_data=yahoo_finance_data,
+        ticker=ticker,
+    )
 
 
 class SingleAgentToolCaller:
@@ -416,15 +453,27 @@ class SingleAgentToolCaller:
             if not isinstance(harvester_output, dict) or not isinstance(parser_output, dict) or not isinstance(scenario_output, dict):
                 raise RuntimeError("Expected harvester/parser/scenario outputs to be dictionaries")
 
+            yahoo_raw = harvester_output.get("yahoo_finance_data")
+            yahoo_data: dict[str, Any] = yahoo_raw if isinstance(yahoo_raw, dict) else {}
+
             source_url = _first_s1_url(fresh)
+            s1_text = _first_s1_text(fresh)
             prediction_claims = _prediction_claims_from_parser(parser_output=parser_output, source_url=source_url)
             filing_facts = _filing_facts_from_parser(parser_output=parser_output, source_url=source_url)
             outcome_metrics = _outcome_metrics_from_scenario(scenario_output=scenario_output)
 
-            claim_checks = _claim_checks_from_s1_evidence(
+            delivery_claim_checks = _delivery_claim_checks_from_s1_evidence(
                 prediction_claims=prediction_claims,
                 scenario_output=scenario_output,
                 parser_output=parser_output,
+            )
+            claim_checks = _claim_checks_from_s1_evidence(
+                parser=self._parser,
+                parser_output=parser_output,
+                filing_text=s1_text,
+                ipo_date=ipo_date,
+                yahoo_finance_data=yahoo_data,
+                ticker=ticker_norm,
             )
 
             filing_text = first_primary_filing_text(harvester_output)
@@ -445,7 +494,6 @@ class SingleAgentToolCaller:
                     except Exception:
                         continue
 
-            yahoo_data = harvester_output.get("yahoo_finance_data") if isinstance(harvester_output.get("yahoo_finance_data"), dict) else {}
             comparable_tickers = yahoo_data.get("comparable_companies") if isinstance(yahoo_data.get("comparable_companies"), list) else []
 
             output_contract = build_output_contract_bundle(
@@ -456,7 +504,7 @@ class SingleAgentToolCaller:
                 scenario_output=scenario_output,
                 outcome_metrics=outcome_metrics,
                 prediction_claims=prediction_claims,
-                claim_checks=claim_checks,
+                claim_checks=delivery_claim_checks,
                 patterns_flagged=patterns_out,
                 comparable_tickers=[str(item).strip().upper() for item in comparable_tickers if str(item).strip()],
                 yahoo_finance_data=yahoo_data,

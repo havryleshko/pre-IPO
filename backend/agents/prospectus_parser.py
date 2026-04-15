@@ -1,10 +1,11 @@
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel
 
 from backend.database.queries import get_analysis_by_id, save_parser_output
+from backend.models.single_agent_result import ClaimCheck
 from backend.models.parser_output import (
     ActualResult,
     ComparableValuation,
@@ -36,6 +37,14 @@ class ProspectusParserResult(BaseModel):
 
 
 class ProspectusParser:
+    _CHECKLIST_REVENUE_LABEL = "Revenue growth guidance present?"
+    _CHECKLIST_PROFIT_LABEL = "Profitability timeline mentioned?"
+    _CHECKLIST_CUSTOMER_LABEL = "Customer/cohort metrics disclosed?"
+    _CHECKLIST_MARKET_LABEL = "Explicit CAGR or market-size claim?"
+    _CHECKLIST_RISK_LABEL = "Red-flag language in Risk Factors?"
+    _CHECKLIST_PROJECTION_LABEL = "SPAC / merger-deck style projections (heuristic)?"
+    _CHECKLIST_SPARSE_LABEL = "Sparse disclosure typical of era?"
+
     async def run(self, payload: ProspectusParserInput) -> ProspectusParserResult:
         run_record = await log_agent_run_start(
             analysis_id=payload.analysis_id,
@@ -73,6 +82,19 @@ class ProspectusParser:
     def _is_prospectus_filing_type(filing_type: str) -> bool:
         u = filing_type.upper().strip()
         return u in ("S-1", "S-1/A", "F-1", "424B4")
+
+    @staticmethod
+    def _is_prospectus_filing_type_loose(filing_type: str) -> bool:
+        if ProspectusParser._is_prospectus_filing_type(filing_type):
+            return True
+        s = filing_type.strip().upper()
+        pad = f" {s} "
+        if re.search(r"[^0-9A-Z]S-1(?:/A)?(?:[^0-9A-Z]|$)", pad):
+            return True
+        if re.search(r"[^0-9A-Z]F-1(?:/A)?(?:[^0-9A-Z]|$)", pad):
+            return True
+        compact = re.sub(r"\s+", "", s)
+        return "424B4" in compact
 
     @staticmethod
     def _is_10k_filing_type(filing_type: str) -> bool:
@@ -255,6 +277,373 @@ class ProspectusParser:
                 actual_s = f"{proj.metric} 10-K actual: {actual_val}"
                 out.append(DeliveryEvidence(claim=claim_s, actual=actual_s, verdict=verdict))
         return out
+
+    def _public_record_era_appendix(
+        self,
+        ipo_date: date | None,
+        yahoo_finance_data: dict[str, Any] | None,
+        ticker: str | None,
+    ) -> str:
+        msg = (
+            "Pre-2000 UK/US prospectuses often exposed only lock-up and share-count basics in the public record "
+            "we can access here; revenue or metric guidance may not appear in the EDGAR extract for that context."
+        )
+        if ipo_date is not None and ipo_date.year < 2000:
+            return msg
+        y = yahoo_finance_data or {}
+        country = str(y.get("country") or "").lower().strip()
+        ex = str(y.get("exchange") or "").lower()
+        if "united kingdom" in country or country in ("gb", "uk"):
+            return msg
+        if "london" in ex or re.search(r"\blse\b", ex) or "lseg" in ex:
+            return msg
+        t = (ticker or "").strip().upper()
+        if t.endswith(".L") or t.endswith(".LN"):
+            return msg
+        return ""
+
+    def _missing_prospectus_body_rationale(
+        self,
+        ipo_date: date | None,
+        yahoo_finance_data: dict[str, Any] | None,
+        ticker: str | None,
+    ) -> str:
+        base = "No S-1, F-1, or 424B4 prospectus body text was returned from SEC EDGAR in this tool run."
+        era = self._public_record_era_appendix(ipo_date, yahoo_finance_data, ticker)
+        return f"{base} {era}".strip() if era else base
+
+    def _build_projection_mechanism_claim(
+        self,
+        filing_text: str,
+        confidence: Literal["high", "medium", "low"],
+    ) -> ClaimCheck:
+        lt = filing_text.lower()
+        strong = bool(
+            re.search(r"\b(?:special purpose acquisition|de-?spac)\b", lt)
+            or re.search(r"\bspac\b", lt)
+            or re.search(r"\b(?:business combination|investor presentation)\b", lt)
+            or re.search(r"\bpipe\b", lt)
+        )
+        direct = bool(
+            re.search(r"\b(?:direct listing|direct\s+public\s+offering)\b", lt) or re.search(r"\bdpo\b", lt)
+        )
+        mixedish = bool(re.search(r"\b(?:pro forma|illustrative|redemption|warrants?|founder shares|sponsor)\b", lt))
+        status: Literal["supported", "missed", "mixed", "unverifiable"]
+        rationale: str | None
+        if strong and direct:
+            status = "mixed"
+            rationale = (
+                "Both SPAC or merger-style language and direct-listing style language appear in this extract "
+                "(heuristic only)."
+            )
+        elif strong:
+            status = "supported"
+            rationale = (
+                "Language points to SPAC, merger presentation, or similar non-plain-IPO framing in this extract "
+                "(heuristic only; does not attribute projections beyond the text returned)."
+            )
+        elif direct:
+            status = "mixed"
+            rationale = (
+                "Direct-listing or DPO-style language appears; projection framing may differ from a classic "
+                "firm-commitment S-1 (heuristic only)."
+            )
+        elif mixedish:
+            status = "mixed"
+            rationale = (
+                "Some merger-, SPAC-, or deck-style wording appears but is not decisive on this extract (heuristic only)."
+            )
+        else:
+            status = "missed"
+            rationale = (
+                "No decisive SPAC, merger-deck, direct-listing, or similar projection-framing signal in the "
+                "available prospectus text (heuristic only)."
+            )
+        quote = self._find_sentence_matching(
+            filing_text,
+            (
+                "special purpose acquisition",
+                "spac",
+                "de-spac",
+                "business combination",
+                "investor presentation",
+                "direct listing",
+                "pipe",
+                "founder shares",
+                "sponsor",
+                "pro forma",
+            ),
+            require_numeric=False,
+        )
+        return ClaimCheck(
+            claim_id=self._CHECKLIST_PROJECTION_LABEL,
+            status=status,
+            evidence_quotes=[quote] if quote else [],
+            rationale=rationale,
+            matched_facts=["projection_source_heuristic"] if status == "supported" else [],
+            confidence=confidence,
+        )
+
+    def build_s1_disclosure_checklist(
+        self,
+        parser_output: dict[str, Any],
+        filing_text: str,
+        *,
+        ipo_date: date | None = None,
+        yahoo_finance_data: dict[str, Any] | None = None,
+        ticker: str | None = None,
+    ) -> list[ClaimCheck]:
+        data_confidence = str(parser_output.get("data_confidence") or "medium").lower()
+        confidence: Literal["high", "medium", "low"] = "medium"
+        if data_confidence in ("high", "medium", "low"):
+            confidence = data_confidence
+
+        if not filing_text.strip():
+            unavailable = self._missing_prospectus_body_rationale(ipo_date, yahoo_finance_data, ticker)
+            era = self._public_record_era_appendix(ipo_date, yahoo_finance_data, ticker)
+            sparse_sparse_rationale = (
+                "No prospectus body text in this run; this row stays visible so sparse-era disclosure is not "
+                "conflated with a retrieved prospectus that is merely thin."
+            )
+            if era:
+                sparse_sparse_rationale = f"{sparse_sparse_rationale} {era}"
+            projection_rationale = (
+                "Heuristic projection-source scan needs S-1, F-1, or 424B4 body text from the current SEC extract."
+            )
+            if era:
+                projection_rationale = f"{projection_rationale} {era}"
+            return [
+                ClaimCheck(claim_id=self._CHECKLIST_REVENUE_LABEL, status="unverifiable", rationale=unavailable, confidence=confidence),
+                ClaimCheck(claim_id=self._CHECKLIST_PROFIT_LABEL, status="unverifiable", rationale=unavailable, confidence=confidence),
+                ClaimCheck(claim_id=self._CHECKLIST_CUSTOMER_LABEL, status="unverifiable", rationale=unavailable, confidence=confidence),
+                ClaimCheck(claim_id=self._CHECKLIST_MARKET_LABEL, status="unverifiable", rationale=unavailable, confidence=confidence),
+                ClaimCheck(claim_id=self._CHECKLIST_RISK_LABEL, status="unverifiable", rationale=unavailable, confidence=confidence),
+                ClaimCheck(
+                    claim_id=self._CHECKLIST_PROJECTION_LABEL,
+                    status="unverifiable",
+                    rationale=projection_rationale,
+                    confidence=confidence,
+                ),
+                ClaimCheck(
+                    claim_id=self._CHECKLIST_SPARSE_LABEL,
+                    status="mixed",
+                    rationale=sparse_sparse_rationale,
+                    confidence=confidence,
+                ),
+            ]
+
+        financials = parser_output.get("financials")
+        financials_dict = financials if isinstance(financials, dict) else {}
+        revenue_quote = self._quote_from_nested_evidence(financials_dict, "revenue_growth_yoy_evidence")
+        revenue_sentence = revenue_quote or self._find_sentence(
+            filing_text,
+            ("year-over-year growth", "yoy growth", "revenue growth", "grow revenue", "increase revenue"),
+        )
+        revenue_check = ClaimCheck(
+            claim_id=self._CHECKLIST_REVENUE_LABEL,
+            status="supported" if revenue_sentence else "missed",
+            evidence_quotes=[revenue_sentence] if revenue_sentence else [],
+            rationale=None if revenue_sentence else "No explicit revenue growth guidance found in the filing text.",
+            matched_facts=["revenue_growth_yoy"] if revenue_sentence else [],
+            confidence=confidence,
+        )
+
+        profitability_sentence = self._find_sentence_matching(
+            filing_text,
+            (
+                "profitability",
+                "profitable",
+                "break-even",
+                "breakeven",
+                "positive cash flow",
+                "operating margin",
+            ),
+        )
+        profitability_has_timing = bool(
+            profitability_sentence
+            and re.search(
+                r"\b(?:20\d{2}|19\d{2}|within\s+\d+\s+(?:months|years)|next\s+\d+\s+(?:months|years)|by\s+(?:the\s+end\s+of\s+)?(?:20\d{2}|19\d{2}|q[1-4]))\b",
+                profitability_sentence,
+                flags=re.IGNORECASE,
+            )
+        )
+        profitability_status: Literal["supported", "missed", "mixed", "unverifiable"]
+        profitability_rationale: str | None = None
+        if profitability_sentence and profitability_has_timing:
+            profitability_status = "supported"
+        elif profitability_sentence:
+            profitability_status = "mixed"
+            profitability_rationale = "Profitability is mentioned, but the filing does not give a concrete timeline."
+        else:
+            profitability_status = "missed"
+            profitability_rationale = "No explicit profitability timeline found in the filing text."
+        profitability_check = ClaimCheck(
+            claim_id=self._CHECKLIST_PROFIT_LABEL,
+            status=profitability_status,
+            evidence_quotes=[profitability_sentence] if profitability_sentence else [],
+            rationale=profitability_rationale,
+            matched_facts=["profitability_timeline"] if profitability_sentence else [],
+            confidence=confidence,
+        )
+
+        customer_sentence = self._find_sentence_matching(
+            filing_text,
+            (
+                "customer",
+                "customers",
+                "retention",
+                "cohort",
+                "churn",
+                "arpu",
+                "ltv",
+                "cac",
+                "bookings",
+                "active users",
+                "monthly active users",
+                "daily active users",
+                "net revenue retention",
+            ),
+            require_numeric=True,
+        )
+        customer_check = ClaimCheck(
+            claim_id=self._CHECKLIST_CUSTOMER_LABEL,
+            status="supported" if customer_sentence else "missed",
+            evidence_quotes=[customer_sentence] if customer_sentence else [],
+            rationale=None if customer_sentence else "No concrete customer or cohort metric was found in the filing text.",
+            matched_facts=["customer_metrics"] if customer_sentence else [],
+            confidence=confidence,
+        )
+
+        market_sentence = self._find_sentence_matching(
+            filing_text,
+            (
+                "cagr",
+                "compound annual growth",
+                "total addressable market",
+                "tam",
+                "sam",
+                "som",
+                "market opportunity",
+                "addressable market",
+                "market size",
+            ),
+            require_numeric=True,
+        )
+        market_check = ClaimCheck(
+            claim_id=self._CHECKLIST_MARKET_LABEL,
+            status="supported" if market_sentence else "missed",
+            evidence_quotes=[market_sentence] if market_sentence else [],
+            rationale=None if market_sentence else "No explicit CAGR or market-size claim was found in the filing text.",
+            matched_facts=["market_size_claim"] if market_sentence else [],
+            confidence=confidence,
+        )
+
+        risk_evidence = parser_output.get("risk_factors_evidence")
+        risk_evidence_list = risk_evidence if isinstance(risk_evidence, list) else []
+        red_flag_quote: str | None = None
+        red_flag_pattern = re.compile(
+            r"\b(?:material weakness|going concern|substantial doubt|limited operating history|history of losses|never achieved profitability|customer concentration|single customer|dependence on|adversely affect|uncertain|liquidity|litigation|regulatory)\b",
+            flags=re.IGNORECASE,
+        )
+        for item in risk_evidence_list:
+            if not isinstance(item, dict):
+                continue
+            quote = str(item.get("quote") or item.get("risk_factor") or "").strip()
+            if quote and red_flag_pattern.search(quote):
+                red_flag_quote = quote
+                break
+        risk_factors = parser_output.get("risk_factors")
+        risk_factor_list = risk_factors if isinstance(risk_factors, list) else []
+        risk_status: Literal["supported", "missed", "mixed", "unverifiable"]
+        risk_rationale: str | None = None
+        if red_flag_quote:
+            risk_status = "supported"
+        elif risk_factor_list:
+            risk_status = "missed"
+            risk_rationale = "Risk factors are present, but no strong red-flag phrase matched the checklist."
+        else:
+            risk_status = "missed"
+            risk_rationale = "No usable risk-factor disclosure was found in the filing text."
+        risk_check = ClaimCheck(
+            claim_id=self._CHECKLIST_RISK_LABEL,
+            status=risk_status,
+            evidence_quotes=[red_flag_quote] if red_flag_quote else [],
+            rationale=risk_rationale,
+            matched_facts=["risk_factors"] if red_flag_quote else [],
+            confidence=confidence,
+        )
+
+        sparse_hits = sum(
+            1
+            for status in (
+                revenue_check.status,
+                profitability_check.status,
+                customer_check.status,
+                market_check.status,
+            )
+            if status == "supported"
+        )
+        demand_signals = parser_output.get("demand_signals")
+        demand_signals_dict = demand_signals if isinstance(demand_signals, dict) else {}
+        institutional_interest = str(demand_signals_dict.get("institutional_interest") or "").strip().lower()
+        roadshow_sentiment = str(demand_signals_dict.get("roadshow_sentiment") or "").strip()
+        has_demand_signal = institutional_interest not in {"", "unknown"} or (
+            roadshow_sentiment and roadshow_sentiment != "No clear roadshow sentiment found."
+        )
+        use_of_proceeds = str(parser_output.get("use_of_proceeds") or "").strip()
+        has_use_of_proceeds = bool(
+            use_of_proceeds
+            and "not clearly identified" not in use_of_proceeds.lower()
+            and "unavailable" not in use_of_proceeds.lower()
+            and "preliminary" not in use_of_proceeds.lower()
+        )
+        business_model = str(parser_output.get("business_model") or "").strip()
+        has_business_model = bool(
+            business_model
+            and business_model != "Business model summary not clearly stated in available filing text."
+            and business_model != "Preliminary analysis. S-1 filing not available."
+        )
+        float_details = parser_output.get("float_details")
+        float_details_dict = float_details if isinstance(float_details, dict) else {}
+        has_basic_structure = bool(
+            self._to_float(float_details_dict.get("total_shares_offered"))
+            or self._to_float(float_details_dict.get("public_float"))
+            or self._to_float(parser_output.get("lockup_period_days"))
+        )
+        sparse_quote = self._find_sentence_matching(
+            filing_text,
+            ("lock-up", "lock up", "shares offered", "public float", "lockup"),
+        )
+        sparse_status: Literal["supported", "missed", "mixed", "unverifiable"] = (
+            "supported"
+            if has_basic_structure and sparse_hits == 0 and not has_demand_signal and not has_use_of_proceeds and not has_business_model
+            else "missed"
+        )
+        sparse_rationale = (
+            "Sparse disclosure typical of era — only lock-up and basic share count were clearly disclosed."
+            if sparse_status == "supported"
+            else "Disclosure goes beyond bare lock-up and share-count basics (modern-style detail present)."
+        )
+        sparse_check = ClaimCheck(
+            claim_id=self._CHECKLIST_SPARSE_LABEL,
+            status=sparse_status,
+            evidence_quotes=[sparse_quote] if sparse_quote else [],
+            rationale=sparse_rationale,
+            matched_facts=["lockup_period_days", "float_details"] if sparse_status == "supported" else [],
+            confidence=confidence,
+        )
+
+        projection_check = self._build_projection_mechanism_claim(filing_text, confidence)
+
+        return [
+            revenue_check,
+            profitability_check,
+            customer_check,
+            market_check,
+            risk_check,
+            projection_check,
+            sparse_check,
+        ]
 
     @staticmethod
     def _normalize_metric_key(metric: str) -> str:
@@ -1201,6 +1590,35 @@ class ProspectusParser:
             if any(keyword in lower for keyword in keywords):
                 return stripped[:600]
         return None
+
+    def _find_sentence_matching(
+        self,
+        text: str,
+        keywords: tuple[str, ...],
+        *,
+        require_numeric: bool = False,
+    ) -> str | None:
+        if not text:
+            return None
+        numeric_pattern = re.compile(r"\b(?:\d{1,3}(?:,\d{3})*(?:\.\d+)?%?|\$\d{1,3}(?:,\d{3})*(?:\.\d+)?(?:\s*(?:million|billion|thousand|m|b|k))?)\b", re.IGNORECASE)
+        for sentence in re.split(r"(?<=[.!?])\s+", text):
+            stripped = sentence.strip()
+            if not stripped:
+                continue
+            lower = stripped.lower()
+            if not any(keyword in lower for keyword in keywords):
+                continue
+            if require_numeric and not numeric_pattern.search(stripped):
+                continue
+            return stripped[:600]
+        return None
+
+    def _quote_from_nested_evidence(self, payload: dict[str, Any], key: str) -> str | None:
+        raw = payload.get(key)
+        if not isinstance(raw, dict):
+            return None
+        quote = str(raw.get("quote") or "").strip()
+        return quote or None
 
     def _to_datetime(self, value: Any) -> datetime | None:
         if isinstance(value, datetime):

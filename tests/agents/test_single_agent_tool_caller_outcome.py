@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from backend.agents.single_agent_tool_caller import _outcome_metrics_from_scenario
+from backend.agents.single_agent_tool_caller import _first_s1_text, _outcome_metrics_from_scenario
 
 
 def test_outcome_metrics_from_scenario_none_without_core_prices() -> None:
@@ -38,3 +38,14 @@ def test_outcome_metrics_from_scenario_maps_core_fields() -> None:
     assert om.current_price == 25.0
     assert om.performance_since_ipo_pct == 50.0
     assert om.peak_date == date(2024, 6, 1)
+
+
+def test_first_s1_text_accepts_form_s1_filing_type() -> None:
+    analysis = {
+        "harvester_output": {
+            "sec_filings": [
+                {"filing_type": "FORM S-1", "text": "Prospectus body about lock-up and shares."},
+            ]
+        }
+    }
+    assert _first_s1_text(analysis) == "Prospectus body about lock-up and shares."
