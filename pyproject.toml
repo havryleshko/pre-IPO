@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pre-ipo"
 version = "0.1.0"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
 dependencies = [
     "asyncpg",
