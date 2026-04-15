@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -234,6 +234,42 @@ class TestFetchIpoPriceHistorySync:
             _fetch_ipo_price_history_sync("NVDA", ipo_date)
 
         ticker_mock.history.assert_called_once_with(start=ipo_date.isoformat(), auto_adjust=False)
+
+    def test_falls_back_to_max_history_when_start_window_empty(self) -> None:
+        import pandas as pd
+
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ipo_date = date(2021, 5, 20)
+        empty_df = pd.DataFrame({"Close": []}, index=pd.DatetimeIndex([], tz="UTC"))
+        full = self._make_history([40.0, 42.0, 38.0], ipo_date)
+        ticker_mock.history.side_effect = [empty_df, full]
+        yf.Ticker.return_value = ticker_mock
+
+        with patch("importlib.import_module", return_value=yf):
+            result = _fetch_ipo_price_history_sync("NVDA", ipo_date)
+
+        assert ticker_mock.history.call_args_list[0] == call(start=ipo_date.isoformat(), auto_adjust=False)
+        assert ticker_mock.history.call_args_list[1] == call(period="max", auto_adjust=False)
+        assert result["ipo_price"] == 40.0
+        assert result["current_price"] == 38.0
+
+    def test_max_history_used_when_ipo_date_after_first_bar(self) -> None:
+        import pandas as pd
+
+        yf = MagicMock()
+        ticker_mock = MagicMock()
+        ipo_late = date(2021, 6, 15)
+        early = self._make_history([10.0, 11.0, 9.5], date(2021, 5, 1))
+        empty_df = pd.DataFrame({"Close": []}, index=pd.DatetimeIndex([], tz="UTC"))
+        ticker_mock.history.side_effect = [empty_df, early]
+        yf.Ticker.return_value = ticker_mock
+
+        with patch("importlib.import_module", return_value=yf):
+            result = _fetch_ipo_price_history_sync("NVDA", ipo_late)
+
+        assert result["ipo_price"] == 10.0
+        assert result["peak_price"] == 11.0
 
     def test_small_positive_split_adjusted_ipo_price_is_accepted(self) -> None:
         yf = MagicMock()

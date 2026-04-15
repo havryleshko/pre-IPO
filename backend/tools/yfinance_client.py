@@ -150,6 +150,40 @@ def _fetch_sync(company_name: str) -> YahooFinanceData:
     )
 
 
+def _close_points_for_ipo_window(yf: Any, normalized_ticker: str, ipo_date: date) -> list[tuple[date, float]]:
+    try:
+        history = yf.Ticker(normalized_ticker).history(start=ipo_date.isoformat(), auto_adjust=False)
+    except Exception:
+        history = None
+    close_points = _extract_close_points(history) if history is not None else []
+    if close_points:
+        return close_points
+    try:
+        history_max = yf.Ticker(normalized_ticker).history(period="max", auto_adjust=False)
+    except Exception:
+        return []
+    pts_max = _extract_close_points(history_max)
+    if not pts_max:
+        return []
+    filtered = [p for p in pts_max if p[0] >= ipo_date]
+    if filtered:
+        if len(filtered) < len(pts_max):
+            _log.info(
+                "ipo_price_history: start= window empty for %s; using %s bars from max history on/after ipo_date=%s",
+                normalized_ticker,
+                len(filtered),
+                ipo_date,
+            )
+        return filtered
+    _log.warning(
+        "ipo_price_history: ipo_date=%s is after first Yahoo bar %s for %s; using full max history for outcome metrics",
+        ipo_date,
+        pts_max[0][0],
+        normalized_ticker,
+    )
+    return pts_max
+
+
 def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]:
     lock_up_cliff_date = ipo_date + timedelta(days=180)
     empty_result = {
@@ -175,12 +209,7 @@ def _fetch_ipo_price_history_sync(ticker: str, ipo_date: date) -> dict[str, Any]
     except ImportError:
         return empty_result
 
-    try:
-        history = yf.Ticker(normalized_ticker).history(start=ipo_date.isoformat(), auto_adjust=False)
-    except Exception:
-        return empty_result
-
-    close_points = _extract_close_points(history)
+    close_points = _close_points_for_ipo_window(yf, normalized_ticker, ipo_date)
     if not close_points:
         return empty_result
 
