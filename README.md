@@ -5,7 +5,7 @@
 
 ## What is this
 
-You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured output contract**: mandatory reference-table fields (ticker, industry/region, IPO date, S-1 claims, long-term outcome, forecast error, pattern), pattern classification, outcome metrics from price history, and an optional Claude-written narrative. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
+You enter a **company name or ticker**. The system pulls **public** data (SEC filings, news, market feeds), runs one **resumable pipeline**, and returns a **structured output contract**: mandatory reference-table fields (ticker, industry/region, IPO date, S-1 claims, long-term outcome, forecast error, pattern), pattern classification, outcome metrics from price history, and an optional Claude-written narrative. **CLI, TUI, and `preipo export`** also surface an **S-1 disclosure checklist**; when news contradicts filings you get **Headlines vs filing** — not a separate dump of raw headlines. The optional narrative is prompt-tuned to stay short and not repeat price figures already shown in the outcome panel. The primary local entrypoint is the **`preipo` CLI**; the **Textual TUI** is an alternate client on top of the same API.
 
 ## How it works
 
@@ -18,7 +18,7 @@ Inside **`single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.m
 3. **Parse** prospectus-style fields from filings into structured parser output.
 4. **Scenario builder** produces scenario output (including price performance fed from IPO-window history).
 5. **NarrativeSynthesiser** calls **Anthropic** with a compact prompt; response is parsed into `NarrativeReport` or skipped on failure.
-6. **Persist** `final_report` as `SingleAgentResult`: reference table row (7 mandatory fields), pattern classification (id + source), outcome metrics from price history, and optional narrative.
+6. **Persist** `final_report` as `SingleAgentResult`: mandatory reference row, structured key pre-IPO lines, **forecast error** (S-1 guidance vs post-IPO 10-K when extractable), S-1 disclosure checklist, delivery verdict checks, pattern + outcome metrics, optional narrative, and optional news-vs-filing discrepancy records.
 
 ## Prerequisites
 
@@ -30,14 +30,14 @@ Inside **`single_agent`** (see `[.cursor/plans/design.md](.cursor/plans/design.m
 
 ## Quickstart (Docker)
 
-From the repo root:
+From the repo root, start **Postgres and the API** (the committed `docker-compose.yml` also defines a **frontend** service that expects a `frontend/` directory — skip it here if that tree is not present):
 
 ```bash
-docker compose up --build
+docker compose up --build postgres backend
 ```
 
 - **API:** `http://localhost:8000`
-- **Web UI:** `http://localhost:3000` only if your tree includes the `frontend/` service from `docker-compose.yml` (some checkouts are API + TUI only)
+- **Web UI on port 3000:** only after `docker compose up … frontend` (or full stack) with a matching `frontend/` build context
 
 The backend **entrypoint** waits for Postgres, applies **all** SQL files in `backend/database/migrations/` **in filename order**, then starts Uvicorn.
 
@@ -109,6 +109,10 @@ SQL lives in `[backend/database/migrations/](backend/database/migrations/)`. App
 pytest tests/ -v
 ```
 
+## License
+
+This project is released under the [MIT License](LICENSE).
+
 ## Eval status (current)
 
 - Current product focus is the mandatory structured row plus pattern identification:
@@ -134,5 +138,5 @@ Layout:
 - `cli/` — `preipo` console entrypoint (HTTP client to the API)
 - `tui/` — Textual client
 - `tests/` — pytest
-- `frontend/` — optional Vite UI (only if present; referenced by `docker-compose.yml`)
+- `frontend/` — Vite UI expected by `docker-compose.yml` when you run the **frontend** service (not shipped in every checkout)
 
