@@ -508,6 +508,7 @@ class SingleAgentToolCaller:
                 patterns_flagged=patterns_out,
                 comparable_tickers=[str(item).strip().upper() for item in comparable_tickers if str(item).strip()],
                 yahoo_finance_data=yahoo_data,
+                s1_disclosure_checks=claim_checks,
             )
 
             narrative = await self._narrative_synthesiser.synthesise(

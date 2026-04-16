@@ -20,6 +20,7 @@ from backend.models.single_agent_result import (
     RealizedOutcome,
     ReferenceTableRow,
 )
+from backend.services.key_pre_ipo_claim_lines import build_key_pre_ipo_claim_lines
 
 _REFERENCE_FILES = ("table-2.csv", "table-3.csv", "table-4.csv")
 _PATTERN_RE = re.compile(r"pattern\s+(\d+)\s*:\s*(.+)", re.IGNORECASE)
@@ -421,6 +422,7 @@ def build_output_contract_bundle(
     patterns_flagged: list[Any],
     comparable_tickers: list[str] | None = None,
     yahoo_finance_data: dict[str, Any] | None = None,
+    s1_disclosure_checks: list[ClaimCheck] | None = None,
 ) -> OutputContractBundle:
     reference = lookup_reference_record(company_name=company_name, ticker=ticker)
     comparable_tickers = comparable_tickers or []
@@ -508,11 +510,23 @@ def build_output_contract_bundle(
         ipo_date=ipo_date,
         listing_type=str(parser_output.get("offering_type") or "unavailable"),
     )
-    pre_ipo_thesis = PreIpoThesis(
-        key_pre_ipo_claims=derived_claims or ["unavailable"],
-        source_document_types=["s1_prospectus", "roadshow_or_media"],
-        source_excerpts=derived_claims[:2],
-    )
+    if s1_disclosure_checks is not None:
+        key_lines, filing_source_excerpts = build_key_pre_ipo_claim_lines(
+            parser_output,
+            s1_disclosure_checks,
+            derived_claims,
+        )
+        pre_ipo_thesis = PreIpoThesis(
+            key_pre_ipo_claims=key_lines,
+            source_document_types=["s1_prospectus", "roadshow_or_media"],
+            source_excerpts=filing_source_excerpts,
+        )
+    else:
+        pre_ipo_thesis = PreIpoThesis(
+            key_pre_ipo_claims=derived_claims or ["unavailable"],
+            source_document_types=["s1_prospectus", "roadshow_or_media"],
+            source_excerpts=derived_claims[:2],
+        )
     realized_outcome = RealizedOutcome(
         long_term_outcome=_resolved_long_term_outcome_line(
             company_name=company_name,
@@ -529,11 +543,18 @@ def build_output_contract_bundle(
         analog_companies=[record.company_ticker for record in analog_records[:3]],
         source="heuristic",
     )
+    if s1_disclosure_checks is not None and pre_ipo_thesis.key_pre_ipo_claims:
+        kpc = pre_ipo_thesis.key_pre_ipo_claims
+        table_key_text = kpc[0] + "\n\n" + "\n".join(kpc[1:]) if len(kpc) > 1 else kpc[0]
+    else:
+        table_key_text = (
+            " | ".join(pre_ipo_thesis.key_pre_ipo_claims) if pre_ipo_thesis.key_pre_ipo_claims else "unavailable"
+        )
     table_row = ReferenceTableRow(
         company_ticker=table_company,
         industry_region=industry_region,
         ipo_date=_safe_iso_date(ipo_date),
-        key_pre_ipo_claims=" | ".join(pre_ipo_thesis.key_pre_ipo_claims) if pre_ipo_thesis.key_pre_ipo_claims else "unavailable",
+        key_pre_ipo_claims=table_key_text,
         long_term_outcome=realized_outcome.long_term_outcome,
         forecast_error=realized_outcome.forecast_error,
         predicted_pattern=pattern_label,

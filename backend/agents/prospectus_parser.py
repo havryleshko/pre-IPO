@@ -27,6 +27,23 @@ from backend.services.agent_run_logger import (
     log_agent_run_start,
 )
 
+S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID = "Revenue growth guidance present?"
+S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID = "Profitability timeline mentioned?"
+S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID = "Customer/cohort metrics disclosed?"
+S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID = "Explicit CAGR or market-size claim?"
+S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID = "Red-flag language in Risk Factors?"
+S1_DISCLOSURE_CHECKLIST_PROJECTION_CLAIM_ID = "SPAC / merger-deck style projections (heuristic)?"
+S1_DISCLOSURE_CHECKLIST_SPARSE_CLAIM_ID = "Sparse disclosure typical of era?"
+S1_DISCLOSURE_CHECKLIST_CLAIM_IDS: tuple[str, ...] = (
+    S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_PROJECTION_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_SPARSE_CLAIM_ID,
+)
+
 
 class ProspectusParserInput(BaseModel):
     analysis_id: str
@@ -37,13 +54,13 @@ class ProspectusParserResult(BaseModel):
 
 
 class ProspectusParser:
-    _CHECKLIST_REVENUE_LABEL = "Revenue growth guidance present?"
-    _CHECKLIST_PROFIT_LABEL = "Profitability timeline mentioned?"
-    _CHECKLIST_CUSTOMER_LABEL = "Customer/cohort metrics disclosed?"
-    _CHECKLIST_MARKET_LABEL = "Explicit CAGR or market-size claim?"
-    _CHECKLIST_RISK_LABEL = "Red-flag language in Risk Factors?"
-    _CHECKLIST_PROJECTION_LABEL = "SPAC / merger-deck style projections (heuristic)?"
-    _CHECKLIST_SPARSE_LABEL = "Sparse disclosure typical of era?"
+    _CHECKLIST_REVENUE_LABEL = S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID
+    _CHECKLIST_PROFIT_LABEL = S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID
+    _CHECKLIST_CUSTOMER_LABEL = S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID
+    _CHECKLIST_MARKET_LABEL = S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID
+    _CHECKLIST_RISK_LABEL = S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID
+    _CHECKLIST_PROJECTION_LABEL = S1_DISCLOSURE_CHECKLIST_PROJECTION_CLAIM_ID
+    _CHECKLIST_SPARSE_LABEL = S1_DISCLOSURE_CHECKLIST_SPARSE_CLAIM_ID
 
     async def run(self, payload: ProspectusParserInput) -> ProspectusParserResult:
         run_record = await log_agent_run_start(

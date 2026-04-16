@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 
+from backend.agents.prospectus_parser import (
+    S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_PROJECTION_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID,
+    S1_DISCLOSURE_CHECKLIST_SPARSE_CLAIM_ID,
+)
 from backend.models.single_agent_result import ClaimCheck, OutcomeMetrics, PredictionClaim
 from backend.services.reference_output_contract import (
     _parse_company_ticker,
@@ -94,6 +103,35 @@ def test_build_output_contract_reference_match_without_core_metrics_uses_csv_out
     record = lookup_reference_record(company_name="Salesforce", ticker="CRM")
     assert record is not None
     assert bundle.reference_table_row.long_term_outcome == record.long_term_outcome
+
+
+def test_build_output_contract_bundle_with_disclosure_checks_includes_management_tone() -> None:
+    disclosure = [
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID, status="supported", evidence_quotes=["We expect rapid revenue growth."]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID, status="missed", evidence_quotes=[]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID, status="missed", evidence_quotes=[]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID, status="missed", evidence_quotes=[]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID, status="missed", evidence_quotes=[]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_PROJECTION_CLAIM_ID, status="missed", evidence_quotes=[]),
+        ClaimCheck(claim_id=S1_DISCLOSURE_CHECKLIST_SPARSE_CLAIM_ID, status="missed", evidence_quotes=[]),
+    ]
+    bundle = build_output_contract_bundle(
+        company_name="UnknownCo",
+        ticker="UNKN",
+        ipo_date=date(2021, 7, 1),
+        parser_output={"business_model": "B2B software platform.", "offering_type": "primary"},
+        scenario_output={"ipo_delivery_verdict": "mixed"},
+        outcome_metrics=OutcomeMetrics(ipo_price=20.0, current_price=10.0, performance_since_ipo_pct=-50.0),
+        prediction_claims=[PredictionClaim(claim_id="c1", claim_type="growth", prediction_text="Rapid growth expected.", source="SEC")],
+        claim_checks=[ClaimCheck(claim_id="c1", status="missed")],
+        patterns_flagged=[],
+        comparable_tickers=[],
+        s1_disclosure_checks=disclosure,
+    )
+    assert bundle.pre_ipo_thesis is not None
+    assert bundle.pre_ipo_thesis.key_pre_ipo_claims
+    assert bundle.pre_ipo_thesis.key_pre_ipo_claims[0].startswith("Management tone:")
+    assert "Management tone:" in bundle.reference_table_row.key_pre_ipo_claims
 
 
 def test_build_output_contract_bundle_falls_back_to_heuristics() -> None:
