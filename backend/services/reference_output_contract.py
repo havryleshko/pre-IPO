@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import re
 from collections import Counter, defaultdict
 from datetime import date
@@ -353,15 +354,229 @@ def _derived_long_term_outcome(
 
 
 def _derived_forecast_error(claim_checks: list[ClaimCheck]) -> str:
+    # Backward-compatible wrapper for older callers/tests.
+    # New logic lives in `_forecast_error_block()` (claims + post-IPO 10-K).
     if not claim_checks:
-        return "Post-IPO forecast error unavailable from current evidence."
-    supported = sum(1 for check in claim_checks if check.status == "supported")
-    missed = sum(1 for check in claim_checks if check.status == "missed")
-    if missed > supported:
-        return "Post-IPO results underdelivered versus the main S-1 framing."
-    if supported > missed:
-        return "Post-IPO results broadly aligned with the main S-1 framing."
-    return "Post-IPO results were mixed versus the main S-1 framing."
+        return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): N/A — post-IPO 10-K unavailable\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
+    return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): N/A — post-IPO 10-K unavailable\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
+
+
+_CAGR_RE = re.compile(r"\b(?:cagr|compound\s+annual\s+growth)\b", flags=re.IGNORECASE)
+_PCT_RE = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%", flags=re.IGNORECASE)
+_PROFIT_RE = re.compile(
+    r"\b(?:profitability|profitable|break[- ]?even|breakeven|positive\s+cash\s+flow)\b",
+    flags=re.IGNORECASE,
+)
+_REVENUE_GUIDANCE_RE = re.compile(
+    r"\b(?:revenue|net\s+revenue|total\s+revenue|tam|sam|som|market\s+size|burn|runway|cagr|compound\s+annual)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _pick_revenue_guidance_line(key_pre_ipo_claims: list[str]) -> str | None:
+    for line in key_pre_ipo_claims:
+        t = str(line).strip()
+        if not t:
+            continue
+        if t.lower().startswith("management tone:"):
+            continue
+        if _REVENUE_GUIDANCE_RE.search(t):
+            return t
+    return None
+
+
+def _parse_implied_cagr_pct(text: str) -> float | None:
+    if not text or not _CAGR_RE.search(text):
+        return None
+    m = _PCT_RE.search(text)
+    if not m:
+        return None
+    try:
+        value = float(m.group(1))
+    except ValueError:
+        return None
+    if value <= 0 or value > 200:
+        return None
+    return value
+
+
+def _parse_implied_profit_year(key_pre_ipo_claims: list[str], ipo_date: date | None) -> int | None:
+    for line in key_pre_ipo_claims:
+        t = str(line).strip()
+        if not t or not _PROFIT_RE.search(t):
+            continue
+        m_year = re.search(r"\b(19\d{2}|20\d{2})\b", t)
+        if m_year:
+            try:
+                return int(m_year.group(1))
+            except ValueError:
+                return None
+        m_within = re.search(r"\bwithin\s+(\d{1,2})\s+(months|years)\b", t, flags=re.IGNORECASE)
+        if m_within and ipo_date is not None:
+            n = int(m_within.group(1))
+            unit = m_within.group(2).lower()
+            if unit.startswith("month"):
+                years = math.ceil(n / 12.0)
+            else:
+                years = n
+            if years <= 0 or years > 50:
+                return None
+            return int(ipo_date.year + years)
+    return None
+
+
+def _parse_money_token(token: str) -> float | None:
+    s = token.strip()
+    if not s:
+        return None
+    negative = False
+    if s.startswith("(") and s.endswith(")"):
+        negative = True
+        s = s[1:-1].strip()
+    s = s.replace("$", "").replace(",", "").strip()
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return -v if negative else v
+
+
+def _extract_years_near(text: str, anchor_idx: int) -> list[int]:
+    start = max(0, anchor_idx - 250)
+    end = min(len(text), anchor_idx + 250)
+    window = text[start:end]
+    years = [int(y) for y in re.findall(r"\b(19\d{2}|20\d{2})\b", window)]
+    years = sorted({y for y in years}, reverse=True)
+    return years[:3]
+
+
+def _extract_three_values_after_anchor(text: str, anchor: str) -> tuple[list[float], int | None]:
+    idx = text.lower().find(anchor.lower())
+    if idx < 0:
+        return ([], None)
+    window = text[idx : min(len(text), idx + 400)]
+    unit_mult = 1.0
+    if re.search(r"\bin\s+millions\b", window, flags=re.IGNORECASE):
+        unit_mult = 1_000_000.0
+    elif re.search(r"\bin\s+thousands\b", window, flags=re.IGNORECASE):
+        unit_mult = 1_000.0
+    tokens = re.findall(r"(\(?\$?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?)", window)
+    values: list[float] = []
+    for tok in tokens:
+        v = _parse_money_token(tok)
+        if v is None:
+            continue
+        values.append(v * unit_mult)
+        if len(values) >= 3:
+            break
+    years = _extract_years_near(text, idx)
+    first_year = years[0] if len(years) >= 1 else None
+    return (values, first_year)
+
+
+def _actual_cagr_pct_from_three(values_latest_to_oldest: list[float]) -> float | None:
+    if len(values_latest_to_oldest) < 3:
+        return None
+    latest = values_latest_to_oldest[0]
+    oldest = values_latest_to_oldest[2]
+    if latest <= 0 or oldest <= 0:
+        return None
+    cagr = (latest / oldest) ** (1.0 / 2.0) - 1.0
+    pct = cagr * 100.0
+    if not math.isfinite(pct):
+        return None
+    return pct
+
+
+def _extract_actuals_from_first_post_ipo_10k(post_ipo_10k: str | None) -> tuple[float | None, int | None]:
+    if not post_ipo_10k or not str(post_ipo_10k).strip():
+        return (None, None)
+    text = str(post_ipo_10k)
+    rev_values, rev_year = _extract_three_values_after_anchor(text, "total revenue")
+    if len(rev_values) < 3:
+        rev_values, rev_year = _extract_three_values_after_anchor(text, "net revenue")
+    actual_cagr = _actual_cagr_pct_from_three(rev_values) if len(rev_values) >= 3 else None
+
+    income_values, income_year = _extract_three_values_after_anchor(text, "net income")
+    if len(income_values) < 3:
+        income_values, income_year = _extract_three_values_after_anchor(text, "net earnings")
+    profit_year: int | None = None
+    if len(income_values) >= 1 and (income_year is not None or rev_year is not None):
+        base_year = income_year or rev_year
+        if base_year is not None:
+            # Values are assumed to be ordered latest -> oldest aligned to base_year, base_year-1, base_year-2.
+            for i, val in enumerate(income_values[:3]):
+                if val > 0:
+                    profit_year = base_year - i
+                    break
+    return (actual_cagr, profit_year)
+
+
+def _forecast_error_block(
+    *,
+    key_pre_ipo_claims: list[str],
+    post_ipo_10k: str | None,
+    ipo_date: date | None,
+) -> str:
+    guidance_line = _pick_revenue_guidance_line(key_pre_ipo_claims)
+    revenue_guidance = guidance_line if guidance_line else "none / vague"
+
+    implied_cagr = _parse_implied_cagr_pct(guidance_line or "")
+    implied_profit_year = _parse_implied_profit_year(key_pre_ipo_claims, ipo_date)
+
+    actual_cagr, actual_profit_year = _extract_actuals_from_first_post_ipo_10k(post_ipo_10k)
+
+    if post_ipo_10k is None or not str(post_ipo_10k).strip():
+        actual_vs = "N/A — post-IPO 10-K unavailable"
+    elif actual_cagr is None:
+        actual_vs = "N/A — post-IPO 10-K revenue series unavailable"
+    else:
+        if implied_cagr is None:
+            actual_vs = f"{actual_cagr:.1f}% actual CAGR vs no guidance"
+        else:
+            actual_vs = f"{actual_cagr:.1f}% actual CAGR vs {implied_cagr:.1f}% implied"
+
+    profit_path: str
+    if implied_profit_year is None:
+        if not any(_PROFIT_RE.search(str(l) or "") for l in key_pre_ipo_claims):
+            profit_path = "not mentioned"
+        else:
+            profit_path = "no timeline given"
+    else:
+        if actual_profit_year is None:
+            profit_path = f"timeline mentioned; first annual profit: unavailable (implied {implied_profit_year})"
+        else:
+            if actual_profit_year <= implied_profit_year:
+                profit_path = f"timeline mentioned; met (first annual profit {actual_profit_year})"
+            else:
+                delta = actual_profit_year - implied_profit_year
+                profit_path = f"timeline mentioned; extended by {delta} years (first annual profit {actual_profit_year})"
+
+    note: str
+    if implied_cagr is not None and actual_cagr is not None:
+        diff = actual_cagr - implied_cagr
+        if diff >= 5.0:
+            note = f"Revenue exceeded implied growth by {diff:+.1f}pp."
+        elif diff <= -5.0:
+            note = f"Revenue missed implied growth by {diff:+.1f}pp."
+        else:
+            note = "Revenue roughly met implied growth."
+    elif implied_profit_year is not None and actual_profit_year is not None:
+        if actual_profit_year <= implied_profit_year:
+            note = "Profitability timeline met."
+        else:
+            note = f"Profitability timeline extended by {actual_profit_year - implied_profit_year} years."
+    else:
+        note = "N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
+
+    return "\n".join(
+        [
+            f"Revenue guidance in S-1: {revenue_guidance}",
+            f"Actual vs implied (first 3 years): {actual_vs}",
+            f"Profitability path: {profit_path}",
+            f"Key miss/beat note: {note}",
+        ]
+    )
 
 
 def _industry_region_from_yahoo(yahoo_finance_data: dict[str, Any] | None) -> str:
@@ -423,6 +638,7 @@ def build_output_contract_bundle(
     comparable_tickers: list[str] | None = None,
     yahoo_finance_data: dict[str, Any] | None = None,
     s1_disclosure_checks: list[ClaimCheck] | None = None,
+    post_ipo_10k: str | None = None,
 ) -> OutputContractBundle:
     reference = lookup_reference_record(company_name=company_name, ticker=ticker)
     comparable_tickers = comparable_tickers or []
@@ -447,9 +663,14 @@ def build_output_contract_bundle(
             source_document_types=["reference_table", "s1_prospectus", "roadshow_or_media"],
             source_excerpts=[reference.key_pre_ipo_claims],
         )
+        forecast_error_block = _forecast_error_block(
+            key_pre_ipo_claims=pre_ipo_thesis.key_pre_ipo_claims,
+            post_ipo_10k=post_ipo_10k,
+            ipo_date=ipo_date,
+        )
         realized_outcome = RealizedOutcome(
             long_term_outcome=long_term_outcome_line,
-            forecast_error=reference.forecast_error,
+            forecast_error=forecast_error_block,
         )
         analog_records = _analog_records_for_profile(
             pattern_id=reference.predicted_pattern_id,
@@ -472,7 +693,7 @@ def build_output_contract_bundle(
             ipo_date=reference.ipo_date or _safe_iso_date(ipo_date),
             key_pre_ipo_claims=reference.key_pre_ipo_claims or "unavailable",
             long_term_outcome=long_term_outcome_line,
-            forecast_error=reference.forecast_error or "unavailable",
+            forecast_error=forecast_error_block or "unavailable",
             predicted_pattern=reference.predicted_pattern or "unavailable",
         )
         return OutputContractBundle(
@@ -533,7 +754,11 @@ def build_output_contract_bundle(
             outcome_metrics=outcome_metrics,
             delivery_verdict=str(scenario_output.get("ipo_delivery_verdict") or "").strip() or None,
         ),
-        forecast_error=_derived_forecast_error(claim_checks),
+        forecast_error=_forecast_error_block(
+            key_pre_ipo_claims=pre_ipo_thesis.key_pre_ipo_claims,
+            post_ipo_10k=post_ipo_10k,
+            ipo_date=ipo_date,
+        ),
     )
     pattern_classification = PatternClassification(
         primary_pattern_id=heuristic_pattern_id,

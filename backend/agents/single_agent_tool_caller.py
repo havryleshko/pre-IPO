@@ -509,6 +509,7 @@ class SingleAgentToolCaller:
                 comparable_tickers=[str(item).strip().upper() for item in comparable_tickers if str(item).strip()],
                 yahoo_finance_data=yahoo_data,
                 s1_disclosure_checks=claim_checks,
+                post_ipo_10k=str(harvester_output.get("post_ipo_10k") or "").strip() or None,
             )
 
             narrative = await self._narrative_synthesiser.synthesise(

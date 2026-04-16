@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import re
+
 from backend.agents.prospectus_parser import (
     S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID,
     S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID,
@@ -128,6 +130,37 @@ def _roadshow_line(parser_output: dict[str, Any]) -> str:
     return ""
 
 
+_REVENUE_BASELINE_RE = re.compile(
+    r"\b(?:revenue|net\s+revenue|total\s+revenue|tam|sam|som|market\s+size|cagr|compound\s+annual|burn|runway)\b",
+    flags=re.IGNORECASE,
+)
+_PROFIT_BASELINE_RE = re.compile(
+    r"\b(?:profitability|profitable|break[- ]?even|breakeven|positive\s+cash\s+flow)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _pick_forecast_baselines(candidates: list[str]) -> list[str]:
+    revenue_line = ""
+    profit_line = ""
+    for raw in candidates:
+        line = raw.strip()
+        if not line:
+            continue
+        if not revenue_line and _REVENUE_BASELINE_RE.search(line):
+            revenue_line = line
+        if not profit_line and _PROFIT_BASELINE_RE.search(line):
+            profit_line = line
+        if revenue_line and profit_line:
+            break
+    out: list[str] = []
+    if revenue_line:
+        out.append(revenue_line)
+    if profit_line:
+        out.append(profit_line)
+    return out
+
+
 def build_key_pre_ipo_claim_lines(
     parser_output: dict[str, Any],
     disclosure_checks: list[ClaimCheck],
@@ -143,16 +176,22 @@ def build_key_pre_ipo_claim_lines(
     if isinstance(rev_evidence, dict):
         rev_quote = str(rev_evidence.get("quote") or "").strip()
 
-    raw_candidates: list[str] = []
+    ordered_candidates: list[str] = []
     if rev_quote:
-        raw_candidates.append(rev_quote)
-    raw_candidates.append(_first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID)))
-    raw_candidates.append(_first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID)))
-    raw_candidates.append(_first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID)))
-    raw_candidates.append(_first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID)))
-    raw_candidates.append(_first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID)))
-    if not _business_model_is_placeholder(business_model):
-        raw_candidates.append(business_model)
+        ordered_candidates.append(rev_quote)
+    ordered_candidates.extend(
+        [
+            _first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_REVENUE_CLAIM_ID)),
+            _first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_MARKET_CLAIM_ID)),
+            _first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_PROFIT_CLAIM_ID)),
+            _first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_CUSTOMER_CLAIM_ID)),
+            _first_quote(by_id.get(S1_DISCLOSURE_CHECKLIST_RISK_CLAIM_ID)),
+            business_model if not _business_model_is_placeholder(business_model) else "",
+        ]
+    )
+
+    baselines = _pick_forecast_baselines(ordered_candidates)
+    raw_candidates: list[str] = [*baselines, *ordered_candidates]
 
     filing_body = _normalize_excerpt_lines(raw_candidates, max_lines=4)
     filing_excerpt_count = len(filing_body)
