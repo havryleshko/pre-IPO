@@ -19,16 +19,20 @@ _SYSTEM_PROMPT = (
     "You are an expert IPO analyst. Given structured data about a company's IPO, "
     "produce a concise analytical narrative in JSON. "
     "Return ONLY valid JSON matching the schema — no markdown fences, no extra keys. "
-    "Be brief: headline plus at most 2 short items per list."
+    "Keep the entire JSON under roughly 100–120 words. Each list field must contain at most one short sentence. "
+    "When Outcome metrics include IPO price, current price, or performance since IPO, do not repeat those figures "
+    "in the headline or bullets; use them only for directional judgment. "
+    "Do not mention standard 180-day lock-ups, generic institutional-demand unknowns, or empty roadshow boilerplate "
+    "unless that point is central to a specific risk or thesis."
 )
 
 _SCHEMA_DESCRIPTION = """{
-  "headline": "<one short sentence verdict on the IPO outcome, grounded in news and price data>",
-  "pre_ipo_story": ["<max 2 short bullets on what the S-1 and pre-IPO news claimed>"],
-  "post_ipo_grounding": ["<max 2 short bullets on what actually happened post-IPO>"],
-  "key_differences": ["<max 2 short bullets on the gap between claims and reality>"],
-  "watch_items": ["<max 2 short bullets on what to monitor next>"],
-  "sources_cited": ["<max 4 short source labels or URLs used>"]
+  "headline": "<one sentence: claims vs reality and drivers, without restating outcome-table numbers>",
+  "pre_ipo_story": ["<at most 1 short sentence on what the S-1 emphasized>"],
+  "post_ipo_grounding": ["<at most 1 short sentence on what happened post-IPO>"],
+  "key_differences": ["<at most 1 short sentence on gap between claims and results>"],
+  "watch_items": ["<at most 1 short sentence on what to monitor>"],
+  "sources_cited": ["<max 3 short source labels or URLs>"]
 }"""
 
 
@@ -55,6 +59,10 @@ def _build_prompt(
 
     if outcome_metrics:
         sections.append(f"Outcome metrics: {outcome_metrics.model_dump_json()}")
+        sections.append(
+            "Instruction: Do not open the headline with a sentence that only repeats those price or return figures; "
+            "interpret them instead. Skip generic lock-up duration or vague institutional/roadshow filler the filing snapshot already implies."
+        )
 
     if prediction_claims:
         claims_json = json.dumps([c.model_dump(mode="json") for c in prediction_claims[:4]], indent=2)

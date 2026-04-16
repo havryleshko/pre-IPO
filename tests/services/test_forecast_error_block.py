@@ -105,4 +105,36 @@ def test_forecast_error_block_falls_back_cleanly_without_guidance_or_10k() -> No
     assert row is not None
     s = row.forecast_error
     assert "Revenue guidance in S-1: none / vague" in s
-    assert "N/A — post-IPO 10-K unavailable" in s
+    assert "Actual vs implied (first 3 years): No explicit guidance in S-1" in s
+
+
+def test_forecast_error_block_no_10k_with_guidance_uses_dataset_sentence() -> None:
+    bundle = build_output_contract_bundle(
+        company_name="TestCo",
+        ticker="TCO",
+        ipo_date=date(2021, 1, 1),
+        parser_output={"business_model": "B2B software platform.", "offering_type": "primary"},
+        scenario_output={"ipo_delivery_verdict": "mixed"},
+        outcome_metrics=None,
+        prediction_claims=[PredictionClaim(claim_id="c1", claim_type="growth", prediction_text="Growth.", source="SEC")],
+        claim_checks=[ClaimCheck(claim_id="c1", status="supported")],
+        patterns_flagged=[],
+        comparable_tickers=[],
+        s1_disclosure_checks=[
+            ClaimCheck(
+                claim_id="Revenue growth guidance present?",
+                status="supported",
+                evidence_quotes=["We expect revenue to grow at a 25% CAGR over the next several years."],
+            ),
+            ClaimCheck(
+                claim_id="Profitability timeline mentioned?",
+                status="missed",
+                evidence_quotes=[],
+            ),
+        ],
+        post_ipo_10k=None,
+    )
+    row = bundle.reference_table_row
+    assert row is not None
+    s = row.forecast_error
+    assert "No comparable post-IPO revenue data available in dataset" in s

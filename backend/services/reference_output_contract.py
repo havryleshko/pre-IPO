@@ -357,8 +357,8 @@ def _derived_forecast_error(claim_checks: list[ClaimCheck]) -> str:
     # Backward-compatible wrapper for older callers/tests.
     # New logic lives in `_forecast_error_block()` (claims + post-IPO 10-K).
     if not claim_checks:
-        return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): N/A — post-IPO 10-K unavailable\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
-    return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): N/A — post-IPO 10-K unavailable\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
+        return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): No explicit guidance in S-1\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
+    return "Revenue guidance in S-1: none / vague\nActual vs implied (first 3 years): No explicit guidance in S-1\nProfitability path: not mentioned\nKey miss/beat note: N/A — post-IPO performance driven by execution/sector rather than S-1 numeric guidance"
 
 
 _CAGR_RE = re.compile(r"\b(?:cagr|compound\s+annual\s+growth)\b", flags=re.IGNORECASE)
@@ -526,10 +526,12 @@ def _forecast_error_block(
 
     actual_cagr, actual_profit_year = _extract_actuals_from_first_post_ipo_10k(post_ipo_10k)
 
-    if post_ipo_10k is None or not str(post_ipo_10k).strip():
-        actual_vs = "N/A — post-IPO 10-K unavailable"
-    elif actual_cagr is None:
-        actual_vs = "N/A — post-IPO 10-K revenue series unavailable"
+    if actual_cagr is None:
+        actual_vs = (
+            "No comparable post-IPO revenue data available in dataset"
+            if guidance_line is not None
+            else "No explicit guidance in S-1"
+        )
     else:
         if implied_cagr is None:
             actual_vs = f"{actual_cagr:.1f}% actual CAGR vs no guidance"
